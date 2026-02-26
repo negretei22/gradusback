@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { FinanzasService } from './finanzas.service';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
@@ -10,13 +10,15 @@ export class FinanzasController {
     constructor(private readonly finanzasService: FinanzasService) { }
 
     @Get()
-    findContratos() {
-        return this.finanzasService.findMovimientos();
+    findMovimientos(@Query('anio') anio?: string, @Query('mes') mes?: string) {
+
+        return this.finanzasService.findMovimientos(anio, mes);
     }
 
-    @Get('categorias')
-    getMarcas(): Promise<CategoriaFinanciera[]> {
-        return this.finanzasService.getCategorias();
+
+    @Get('categorias/:id')
+    getCategorias(@Param('id') id_categoria: number): Promise<CategoriaFinanciera[]> {
+        return this.finanzasService.getCategorias(Number(id_categoria));
     }
 
     @Get('metodos_pago')
@@ -24,9 +26,9 @@ export class FinanzasController {
         return this.finanzasService.getMetodosPago();
     }
 
-     @Get('saldo')
-    getSaldo(): Promise<{ saldo: number }> {
-        return this.finanzasService.getSaldo();
+    @Get('saldo/:anio/:mes')
+    async getSaldo(@Param('anio') anio: number,@Param('mes') mes: number): Promise<{ saldo: number }> {
+        return await this.finanzasService.getSaldo(anio,mes);
     }
 
     @Post('save')
@@ -36,13 +38,13 @@ export class FinanzasController {
     }
 
     @Post('update/:id')
-    async updateMovimiento(@Param('id') id: number,@Body() payload: any) {
-        return await this.finanzasService.updateMovimiento(id,payload)
+    async updateMovimiento(@Param('id') id: number, @Body() payload: any) {
+        return await this.finanzasService.updateMovimiento(id, payload)
     }
 
     @Get('movimiento/:id')
     getMovimiento(@Param('id') id: number) {
-    return this.finanzasService.getMovimiento(id);
+        return this.finanzasService.getMovimiento(id);
     }
 
 
