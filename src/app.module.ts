@@ -31,10 +31,10 @@ import { MetodoPago } from './finanzas/metodos_pago.entity';
   imports: [
     TypeOrmModule.forRoot({
       type: 'mysql',
-      host: 'localhost',
+      host: 'vodmx-db.mysql.database.azure.com',
       port: 3306,
-      username: 'root',
-      password: '', // cambia
+      username: 'iv0@vodmx-db',
+      password: '*N36r3t3', // cambia
       database: 'gradus',
       entities: [User,
         Role,
