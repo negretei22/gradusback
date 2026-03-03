@@ -45,6 +45,17 @@ export class FinanzasService {
         });
     }
 
+     getRazonSocial(rfc: any): Promise<any[]> {
+  return this.movimientoFinancieroRepo
+    .createQueryBuilder('m')
+    .select('m.razon_social', 'razon_social')
+    .where('m.rfc = :rfc', { rfc })
+    .groupBy('m.razon_social')
+    .getRawMany();
+}
+
+    
+
     async getSaldo(anio: number, mes: number) {
 
         let where = `YEAR(fecha_factura) = ${anio}`;

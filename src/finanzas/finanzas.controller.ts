@@ -21,6 +21,11 @@ export class FinanzasController {
         return this.finanzasService.getCategorias(Number(id_categoria));
     }
 
+    @Get('razon_social/:rfc')
+    getRazonSocial(@Param('rfc') rfc: number): Promise<MovimientoFinanciero[]> {
+        return this.finanzasService.getRazonSocial(rfc);
+    }
+
     @Get('metodos_pago')
     getMetodosPago(): Promise<MetodoPago[]> {
         return this.finanzasService.getMetodosPago();
