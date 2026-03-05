@@ -24,11 +24,17 @@ import { MovimientoFinanciero } from './finanzas/movimientos_financieros.entity'
 import { FinanzasModule } from './finanzas/finanzas.module';
 import { CategoriaFinanciera } from './finanzas/categorias_financieras.entity';
 import { MetodoPago } from './finanzas/metodos_pago.entity';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
+    }),
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: 'vodmx-db.mysql.database.azure.com',

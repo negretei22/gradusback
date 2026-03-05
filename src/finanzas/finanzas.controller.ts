@@ -1,13 +1,30 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FinanzasService } from './finanzas.service';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoFinanciero } from './movimientos_financieros.entity';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { Express } from 'express';
+
+const storage = diskStorage({
+  destination: './uploads/movimientos',
+  filename: (req, file, callback) => {
+    callback(null, file.originalname);
+  }
+});
 
 @Controller('finanzas')
+
 export class FinanzasController {
 
+
+
+
     constructor(private readonly finanzasService: FinanzasService) { }
+
+
 
     @Get()
     findMovimientos(@Query('anio') anio?: string, @Query('mes') mes?: string) {
@@ -32,19 +49,44 @@ export class FinanzasController {
     }
 
     @Get('saldo/:anio/:mes')
-    async getSaldo(@Param('anio') anio: number,@Param('mes') mes: number): Promise<{ saldo: number }> {
-        return await this.finanzasService.getSaldo(anio,mes);
+    async getSaldo(@Param('anio') anio: number, @Param('mes') mes: number): Promise<{ saldo: number }> {
+        return await this.finanzasService.getSaldo(anio, mes);
     }
 
     @Post('save')
-    async guardaMovimiento(@Body() payload: any) {
-        console.log(payload)
-        return await this.finanzasService.guardaMovimiento(payload)
+    @UseInterceptors(FileInterceptor('archivo', { storage }))
+
+    async guardaMovimiento(
+        @UploadedFile() file: Express.Multer.File,
+        @Body() payload: any
+    ) {
+        console.log("BODY:", payload);
+        console.log("FILE:", file);
+
+        if (file) {
+            payload.archivo = file.filename;
+        }
+
+        return await this.finanzasService.guardaMovimiento(payload);
+
     }
 
     @Post('update/:id')
-    async updateMovimiento(@Param('id') id: number, @Body() payload: any) {
-        return await this.finanzasService.updateMovimiento(id, payload)
+    @UseInterceptors(FileInterceptor('archivo', { storage }))
+    async updateMovimiento(
+        @Param('id') id: number,
+        @UploadedFile() file: Express.Multer.File,
+        @Body() payload: any
+    ) {
+
+        console.log("BODY:", payload);
+        console.log("FILE:", file);
+
+        if (file) {
+            payload.archivo = file.filename;
+        }
+
+        return await this.finanzasService.updateMovimiento(id, payload);
     }
 
     @Get('movimiento/:id')

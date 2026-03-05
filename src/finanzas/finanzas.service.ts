@@ -4,6 +4,7 @@ import { MovimientoFinanciero } from './movimientos_financieros.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
+import * as fs from 'fs';
 
 @Injectable()
 export class FinanzasService {
@@ -45,22 +46,22 @@ export class FinanzasService {
         });
     }
 
-     getRazonSocial(rfc: any): Promise<any[]> {
-  return this.movimientoFinancieroRepo
-    .createQueryBuilder('m')
-    .select('m.razon_social', 'razon_social')
-    .where('m.rfc = :rfc', { rfc })
-    .groupBy('m.razon_social')
-    .getRawMany();
-}
+    getRazonSocial(rfc: any): Promise<any[]> {
+        return this.movimientoFinancieroRepo
+            .createQueryBuilder('m')
+            .select('m.razon_social', 'razon_social')
+            .where('m.rfc = :rfc', { rfc })
+            .groupBy('m.razon_social')
+            .getRawMany();
+    }
 
-    
+
 
     async getSaldo(anio: number, mes: number) {
 
         let where = `YEAR(fecha_factura) = ${anio}`;
 
-        if (mes>0) {
+        if (mes > 0) {
             where += ` AND MONTH(fecha_factura) = ${mes}`;
         }
 
@@ -98,9 +99,28 @@ export class FinanzasService {
     }
 
     async updateMovimiento(id: number, payload: any) {
-        console.log(payload)
+
+        const movimiento = await this.movimientoFinancieroRepo.findOne({
+            where: { id }
+        });
+
+        if (!movimiento) {
+            throw new Error('Movimiento no encontrado');
+        }
+
+        // Si llega archivo nuevo
+        if (payload.archivo && movimiento.archivo) {
+
+            const path = `uploads/movimientos/${movimiento.archivo}`;
+
+            if (fs.existsSync(path)) {
+                fs.unlinkSync(path);
+            }
+        }
+
         await this.movimientoFinancieroRepo.update(id, payload);
-        return this.movimientoFinancieroRepo.findOne({ where: { id } });
+
+        return { ok: true };
     }
 
 

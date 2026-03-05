@@ -14,14 +14,14 @@ export class MovimientoFinanciero {
 
   @Column({ type: 'varchar', length: 50 })
   tipo_movimiento_id: string;
-  
+
   @Column({ type: 'int', nullable: true })
   categoria_id: number;
 
-  @Column({ type: 'date', nullable: true  })
+  @Column({ type: 'date', nullable: true })
   fecha_pago: Date;
 
-  @Column({ type: 'date', nullable: true  })
+  @Column({ type: 'date', nullable: true })
   fecha_factura: Date;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
@@ -59,6 +59,12 @@ export class MovimientoFinanciero {
 
   @Column({ type: 'int', nullable: true })
   metodo_pago_id: number;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archivo: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  archivo_nombre: string;
 
   @CreateDateColumn({ type: 'datetime' })
   created_at: Date;
