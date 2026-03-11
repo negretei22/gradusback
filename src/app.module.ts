@@ -26,6 +26,9 @@ import { CategoriaFinanciera } from './finanzas/categorias_financieras.entity';
 import { MetodoPago } from './finanzas/metodos_pago.entity';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { ProcedimientosModule } from './procedimientos/procedimientos.module';
+import { Procedimiento } from './procedimientos/procedimientos.entity';
+
 
 
 
@@ -58,7 +61,8 @@ import { join } from 'path';
         Maquinaria,
         MovimientoFinanciero,
         CategoriaFinanciera,
-        MetodoPago
+        MetodoPago,
+        Procedimiento
       ],
       synchronize: true, // SOLO DEV
     }),
@@ -67,6 +71,7 @@ import { join } from 'path';
     LicitacionesModule,
     MaquinariaModule,
     FinanzasModule,
+    ProcedimientosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
