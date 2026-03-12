@@ -13,13 +13,17 @@ export class ProcedimientosService {
 
     async findAll() {
 
-        const data = await this.repo.find();
+        const data = await this.repo.find({
+            where: {
+                activo: 1
+            }
+        });
 
         return data.map(p => ({
 
             proc: p.numero_procedimiento,
-            estado: p.estado,
-            desc: p.descripcion,
+            estado: p.entidad_federativa_contratacion,
+            desc: p.nombre_procedimiento,
             visita: p.fecha_visita,
             aclar: p.fecha_aclaraciones,
             apertura: p.fecha_apertura,
