@@ -18,11 +18,12 @@ export class ProcedimientosService {
                 activo: 1
             }
         });
-
+        
         return data.map(p => ({
 
             proc: p.numero_procedimiento,
             estado: p.entidad_federativa_contratacion,
+            uid: p.uuid_procedimiento,
             desc: p.nombre_procedimiento,
             visita: p.fecha_visita,
             aclar: p.fecha_aclaraciones,
