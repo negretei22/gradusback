@@ -11,7 +11,7 @@ export class MovimientoFinanciero {
 
   @PrimaryGeneratedColumn()
   id: number;
-
+  
   @Column({ type: 'varchar', length: 50 })
   tipo_movimiento_id: string;
 
@@ -59,6 +59,9 @@ export class MovimientoFinanciero {
 
   @Column({ type: 'int', nullable: true })
   metodo_pago_id: number;
+
+  @Column({ type: 'int', default: 0 })
+  orden: number;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   archivo: string;

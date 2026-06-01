@@ -37,6 +37,7 @@ export class FinanzasService {
     FROM movimientos_financieros m
     LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
     ${where}
+    ORDER BY m.orden ASC
   `);
     }
 
@@ -96,6 +97,17 @@ export class FinanzasService {
 
     async getMovimiento(id: number) {
         return this.movimientoFinancieroRepo.findOne({ where: { id } });
+    }
+
+
+    async updateOrden(id: number, orden: number): Promise<any> {
+
+        return await this.movimientoFinancieroRepo.query(`
+    UPDATE movimientos_financieros
+    SET orden = ?
+    WHERE id = ?
+  `, [orden, id]);
+
     }
 
     async updateMovimiento(id: number, payload: any) {

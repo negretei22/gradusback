@@ -9,10 +9,10 @@ import { extname } from 'path';
 import { Express } from 'express';
 
 const storage = diskStorage({
-  destination: './uploads/movimientos',
-  filename: (req, file, callback) => {
-    callback(null, file.originalname);
-  }
+    destination: './uploads/movimientos',
+    filename: (req, file, callback) => {
+        callback(null, file.originalname);
+    }
 });
 
 @Controller('finanzas')
@@ -33,6 +33,8 @@ export class FinanzasController {
     }
 
 
+
+
     @Get('categorias/:id')
     getCategorias(@Param('id') id_categoria: number): Promise<CategoriaFinanciera[]> {
         return this.finanzasService.getCategorias(Number(id_categoria));
@@ -46,6 +48,16 @@ export class FinanzasController {
     @Get('metodos_pago')
     getMetodosPago(): Promise<MetodoPago[]> {
         return this.finanzasService.getMetodosPago();
+    }
+
+    @Post('update_orden')
+    updateOrden(
+        @Body('id') id: number,
+        @Body('orden') orden: number
+    ): Promise<any> {
+
+        return this.finanzasService.updateOrden(id, orden);
+
     }
 
     @Get('saldo/:anio/:mes')
