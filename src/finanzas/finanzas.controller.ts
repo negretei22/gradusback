@@ -5,6 +5,8 @@ import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoFinanciero } from './movimientos_financieros.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import { Delete } from '@nestjs/common';
+
 import { extname } from 'path';
 import { Express } from 'express';
 
@@ -38,6 +40,11 @@ export class FinanzasController {
     @Get('categorias/:id')
     getCategorias(@Param('id') id_categoria: number): Promise<CategoriaFinanciera[]> {
         return this.finanzasService.getCategorias(Number(id_categoria));
+    }
+
+    @Delete(':id')
+    deleteMovimiento(@Param('id') id: number) {
+        return this.finanzasService.deleteMovimiento(Number(id));
     }
 
     @Get('razon_social/:rfc')

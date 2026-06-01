@@ -57,6 +57,12 @@ export class FinanzasService {
     }
 
 
+    async deleteMovimiento(id: number) {
+
+        return await this.movimientoFinancieroRepo.delete(id);
+
+    }
+
 
     async getSaldo(anio: number, mes: number) {
 
