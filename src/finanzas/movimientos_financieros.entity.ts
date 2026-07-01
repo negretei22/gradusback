@@ -27,6 +27,10 @@ export class MovimientoFinanciero {
   @Column({ type: 'varchar', length: 100, nullable: true })
   folio_fiscal: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  folio_complemento_fiscal: string;
+
+
   @Column({ type: 'text', nullable: true })
   rfc: string;
 
@@ -63,11 +67,20 @@ export class MovimientoFinanciero {
   @Column({ type: 'int', default: 0 })
   orden: number;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  archivo: string;
+@Column({ type: 'varchar', length: 255, nullable: true })
+  archivo_prefactura: string;
 
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  archivo_nombre: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archivo_factura: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archivo_nota_pago: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archivo_pago: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archivo_otra: string;
 
   @CreateDateColumn({ type: 'datetime' })
   created_at: Date;

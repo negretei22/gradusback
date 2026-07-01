@@ -118,23 +118,25 @@ export class FinanzasService {
 
     async updateMovimiento(id: number, payload: any) {
 
-        const movimiento = await this.movimientoFinancieroRepo.findOne({
-            where: { id }
-        });
+        const movimiento = await this.movimientoFinancieroRepo.findOne({ where: { id } });
 
         if (!movimiento) {
             throw new Error('Movimiento no encontrado');
         }
 
-        // Si llega archivo nuevo
-        if (payload.archivo && movimiento.archivo) {
+        const camposArchivo = [
+            'archivo_prefactura', 'archivo_factura',
+            'archivo_nota_pago', 'archivo_pago', 'archivo_otra'
+        ];
 
-            const path = `uploads/movimientos/${movimiento.archivo}`;
-
-            if (fs.existsSync(path)) {
-                fs.unlinkSync(path);
+        camposArchivo.forEach(campo => {
+            if (payload[campo] && (movimiento as any)[campo]) {
+                const path = `uploads/movimientos/${(movimiento as any)[campo]}`;
+                if (fs.existsSync(path)) {
+                    fs.unlinkSync(path);
+                }
             }
-        }
+        });
 
         await this.movimientoFinancieroRepo.update(id, payload);
 
