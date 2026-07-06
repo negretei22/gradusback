@@ -5,9 +5,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import * as fs from 'fs';
+import { join, extname } from 'path';
+
+
+const LABELS_MAP: { [key: string]: string } = {
+    archivo_prefactura: 'Prefactura',
+    archivo_factura: 'Factura',
+    archivo_nota_pago: 'Nota de Pago',
+    archivo_pago: 'Pago',
+    archivo_otra: 'Otra',
+};
 
 @Injectable()
 export class FinanzasService {
+
+    
 
     constructor(
         @InjectRepository(MovimientoFinanciero)
@@ -129,11 +141,41 @@ export class FinanzasService {
             'archivo_nota_pago', 'archivo_pago', 'archivo_otra'
         ];
 
+        const folioNuevo = (payload.folio_fiscal || 'SIN_FOLIO').replace(/[^a-zA-Z0-9-_]/g, '');
+
         camposArchivo.forEach(campo => {
-            if (payload[campo] && (movimiento as any)[campo]) {
-                const path = `uploads/movimientos/${(movimiento as any)[campo]}`;
-                if (fs.existsSync(path)) {
-                    fs.unlinkSync(path);
+
+            const archivoViejo = (movimiento as any)[campo];
+
+            if (payload[campo]) {
+                // Caso 1: subieron un archivo NUEVO en este campo -> borra el viejo si existía
+                if (archivoViejo) {
+                    const path = `uploads/movimientos/${archivoViejo}`;
+                    if (fs.existsSync(path)) {
+                        fs.unlinkSync(path);
+                    }
+                }
+            } else if (archivoViejo) {
+                // Caso 2: NO subieron archivo nuevo, pero ya existe uno -> intenta renombrarlo con el folio actualizado
+                const ext = extname(archivoViejo);
+                const label = LABELS_MAP[campo];
+                const nuevoNombre = `${folioNuevo} - ${label}${ext}`;
+
+                if (nuevoNombre !== archivoViejo) {
+                    const rutaVieja = join('./uploads/movimientos', archivoViejo);
+                    const rutaNueva = join('./uploads/movimientos', nuevoNombre);
+
+                    try {
+                        if (fs.existsSync(rutaVieja)) {
+                            fs.renameSync(rutaVieja, rutaNueva);
+                            payload[campo] = nuevoNombre; // actualiza el nombre para guardar en BD
+                        }
+                    } catch (err) {
+                        console.error(`Error renombrando ${campo}:`, err);
+                        payload[campo] = archivoViejo; // fallback: deja el nombre viejo
+                    }
+                } else {
+                    payload[campo] = archivoViejo; // el nombre no cambió, no hace falta tocarlo
                 }
             }
         });
