@@ -37,9 +37,9 @@ export class FinanzasService {
 
         if (anio && mes) {
             if (mes == '0')
-                where = `WHERE YEAR(m.fecha_factura) = ${anio}`;
+                where = `WHERE YEAR(m.fecha_pago) = ${anio}`;
             else
-                where = `WHERE YEAR(m.fecha_factura) = ${anio} AND MONTH(m.fecha_factura) = ${mes}`;
+                where = `WHERE YEAR(m.fecha_pago) = ${anio} AND MONTH(m.fecha_pago) = ${mes}`;
         }
 
         return this.movimientoFinancieroRepo.query(`
@@ -78,10 +78,10 @@ export class FinanzasService {
 
     async getSaldo(anio: number, mes: number) {
 
-        let where = `YEAR(fecha_factura) = ${anio}`;
+        let where = `YEAR(fecha_pago) = ${anio}`;
 
         if (mes > 0) {
-            where += ` AND MONTH(fecha_factura) = ${mes}`;
+            where += ` AND MONTH(fecha_pago) = ${mes}`;
         }
 
         //console.log(where)
