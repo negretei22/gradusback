@@ -20,28 +20,45 @@ const storage = diskStorage({
 });
 
 const LABELS = [
-    { key: 'prefactura', label: 'Prefactura' },
     { key: 'factura', label: 'Factura' },
-    { key: 'nota_pago', label: 'Nota de Pago' },
-    { key: 'pago', label: 'Pago' },
-    { key: 'otra', label: 'Otra' },
+    { key: 'pago', label: 'Comprobante de Pago' },
 ];
 
-function renombrarArchivos(
+
+
+
+
+async function renombrarArchivos(
     files: { [key: string]: Express.Multer.File[] },
-    folioFiscal: string,
-    labels: { key: string, label: string }[]
+    payload: any,
+    labels: { key: string, label: string }[],
+    conteosIniciales: { [campo: string]: number }
 ) {
     const resultado: { [key: string]: string } = {};
 
+    const fechaBase = payload.fecha_factura && payload.fecha_factura !== '0000-00-00'
+        ? payload.fecha_factura
+        : payload.fecha_pago;
+
+    const fecha = new Date(fechaBase);
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+
+    const rfcLimpio = (payload.rfc || 'SIN_RFC').replace(/[^a-zA-Z0-9-_]/g, '');
+
     labels.forEach(({ key, label }) => {
         const campo = `archivo_${key}`;
-        const archivo = files?.[campo]?.[0];
-        if (archivo) {
+        const archivosCampo = files?.[campo];
+        if (!archivosCampo || !archivosCampo.length) return;
+
+        const nombresFinales: string[] = [];
+        let contador = conteosIniciales[campo] || 0;
+
+        archivosCampo.forEach((archivo) => {
             try {
+                contador++;
                 const ext = extname(archivo.originalname);
-                const folioLimpio = (folioFiscal || 'SIN_FOLIO').replace(/[^a-zA-Z0-9-_]/g, '');
-                const nuevoNombre = `${folioLimpio} - ${label}${ext}`;
+                const nuevoNombre = `${anio}-${mes}-${rfcLimpio}-${label} ${contador}${ext}`;
 
                 const rutaVieja = join('./uploads/movimientos', archivo.filename);
                 const rutaNueva = join('./uploads/movimientos', nuevoNombre);
@@ -49,24 +66,25 @@ function renombrarArchivos(
                 console.log('Renombrando:', rutaVieja, '->', rutaNueva);
 
                 renameSync(rutaVieja, rutaNueva);
-                resultado[campo] = nuevoNombre;
+                nombresFinales.push(nuevoNombre);
             } catch (err) {
                 console.error(`Error renombrando ${campo}:`, err);
-                // fallback: al menos guarda el nombre original que Multer sí subió
-                resultado[campo] = archivo.filename;
+                nombresFinales.push(archivo.filename);
             }
-        }
+        });
+
+        resultado[campo] = nombresFinales.join(',');
     });
 
     return resultado;
 }
 
+
+
+
 const archivosInterceptor = FileFieldsInterceptor([
-    { name: 'archivo_prefactura', maxCount: 1 },
-    { name: 'archivo_factura', maxCount: 1 },
-    { name: 'archivo_nota_pago', maxCount: 1 },
-    { name: 'archivo_pago', maxCount: 1 },
-    { name: 'archivo_otra', maxCount: 1 },
+    { name: 'archivo_factura', maxCount: 10 },
+    { name: 'archivo_pago', maxCount: 10 },
 ], { storage });
 
 @Controller('finanzas')
@@ -83,6 +101,13 @@ export class FinanzasController {
     getCategorias(@Param('id') id_categoria: number): Promise<CategoriaFinanciera[]> {
         return this.finanzasService.getCategorias(Number(id_categoria));
     }
+
+    @Get('movimientos/buscar-razon-social')
+    buscarPorRazonSocial(@Query('texto') texto: string): Promise<MovimientoFinanciero[]> {
+        return this.finanzasService.buscarPorRazonSocial(texto);
+    }
+
+
 
     @Delete(':id')
     deleteMovimiento(@Param('id') id: number) {
@@ -118,7 +143,13 @@ export class FinanzasController {
         @UploadedFiles() files: { [key: string]: Express.Multer.File[] },
         @Body() payload: any
     ) {
-        const renombrados = renombrarArchivos(files, payload.folio_fiscal, LABELS);
+        const conteosIniciales: { [campo: string]: number } = {};
+        for (const { key } of LABELS) {
+            const campo = `archivo_${key}`;
+            conteosIniciales[campo] = await this.finanzasService.contarArchivosPorRfcYTipo(payload.rfc, campo);
+        }
+
+        const renombrados = await renombrarArchivos(files, payload, LABELS, conteosIniciales);
         Object.assign(payload, renombrados);
 
         return await this.finanzasService.guardaMovimiento(payload);
@@ -132,7 +163,13 @@ export class FinanzasController {
         @UploadedFiles() files: { [key: string]: Express.Multer.File[] },
         @Body() payload: any
     ) {
-        const renombrados = renombrarArchivos(files, payload.folio_fiscal, LABELS);
+        const conteosIniciales: { [campo: string]: number } = {};
+        for (const { key } of LABELS) {
+            const campo = `archivo_${key}`;
+            conteosIniciales[campo] = await this.finanzasService.contarArchivosPorRfcYTipo(payload.rfc, campo);
+        }
+
+        const renombrados = await renombrarArchivos(files, payload, LABELS, conteosIniciales);
         Object.assign(payload, renombrados);
 
         return await this.finanzasService.updateMovimiento(id, payload);
