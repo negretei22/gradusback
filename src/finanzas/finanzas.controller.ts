@@ -107,6 +107,13 @@ export class FinanzasController {
         return this.finanzasService.buscarPorRazonSocial(texto);
     }
 
+    @Get('movimientos/buscar-conceptos')
+    buscarConceptosPorRfc(
+        @Query('rfc') rfc: string,
+        @Query('texto') texto: string
+    ): Promise<MovimientoFinanciero[]> {
+        return this.finanzasService.buscarConceptosPorRfc(rfc, texto);
+    }
 
 
     @Delete(':id')

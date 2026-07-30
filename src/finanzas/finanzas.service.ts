@@ -84,6 +84,22 @@ export class FinanzasService {
             .getRawMany();
     }
 
+    async buscarConceptosPorRfc(rfc: string, texto: string): Promise<MovimientoFinanciero[]> {
+        const query = this.movimientoFinancieroRepo
+            .createQueryBuilder('mf')
+            .select('mf.concepto', 'concepto')
+            .where('mf.rfc = :rfc', { rfc });
+
+        if (texto) {
+            query.andWhere('mf.concepto LIKE :texto', { texto: `%${texto}%` });
+        }
+
+        return query
+            .groupBy('mf.concepto')
+            .limit(10)
+            .getRawMany();
+    }
+
 
     async deleteMovimiento(id: number) {
 
@@ -121,7 +137,7 @@ export class FinanzasService {
     getMetodosPago(): Promise<MetodoPago[]> {
         return this.metodosPagoRepository.find({
             order: {
-                nombre: 'DESC'
+                nombre: 'ASC'
             }
         });
     }
