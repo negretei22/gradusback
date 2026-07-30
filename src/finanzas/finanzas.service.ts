@@ -122,7 +122,11 @@ export class FinanzasService {
       SUM(CASE WHEN tipo_movimiento_id = 1 THEN importe_sin_iva ELSE 0 END) AS ingresos,
       SUM(CASE WHEN tipo_movimiento_id = 2 THEN importe_sin_iva ELSE 0 END) AS egresos,
       SUM(CASE WHEN tipo_movimiento_id = 3 THEN importe_sin_iva ELSE 0 END) AS inversiones,
-      SUM(CASE WHEN tipo_movimiento_id = 1 THEN importe_sin_iva ELSE -importe_sin_iva END) AS saldo
+      SUM(CASE 
+      WHEN tipo_movimiento_id = 1 THEN importe_sin_iva 
+      WHEN tipo_movimiento_id = 2 THEN -importe_sin_iva 
+      ELSE 0 
+    END) AS saldo
     FROM movimientos_financieros where ${where}
   `);
 
