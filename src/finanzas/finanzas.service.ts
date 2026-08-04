@@ -4,6 +4,7 @@ import { MovimientoFinanciero } from './movimientos_financieros.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
+import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
 import * as fs from 'fs';
 import { join, extname } from 'path';
 import { Like } from 'typeorm';
@@ -28,7 +29,9 @@ export class FinanzasService {
         @InjectRepository(CategoriaFinanciera)
         private categoriasFinancierasRepo: Repository<CategoriaFinanciera>,
         @InjectRepository(MetodoPago)
-        private metodosPagoRepository: Repository<MetodoPago>
+        private metodosPagoRepository: Repository<MetodoPago>,
+        @InjectRepository(MovimientoCajaChica)
+        private readonly movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
 
     ) { }
 
@@ -148,8 +151,27 @@ export class FinanzasService {
 
     async guardaMovimiento(payload: any) {
 
-        const contrato = this.movimientoFinancieroRepo.create(payload);
-        return await this.movimientoFinancieroRepo.save(contrato);
+        const movimiento = this.movimientoFinancieroRepo.create(payload);
+        const resultado = await this.movimientoFinancieroRepo.save(movimiento);
+
+        if (
+            Number(payload.tipo_movimiento_id) === 2 &&
+            Number(payload.categoria_id) === 27
+        ) {
+
+            const cajaChica = this.movimientoCajaChicaRepo.create({
+                fecha: payload.fecha_pago,
+                concepto: payload.concepto,
+                ingreso: payload.importe_sin_iva,      // o el campo correspondiente
+                gasto: 0,
+                capturo: payload.razon_social,
+                orden: 0
+            });
+
+            await this.movimientoCajaChicaRepo.save(cajaChica);
+        }
+
+        return resultado;
     }
 
 
