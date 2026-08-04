@@ -43,9 +43,13 @@ export class MaquinariaService {
     }
 
     getMarcas(): Promise<Marcas[]> {
-        console.log('test')
-        return this.marcasRepo.find();
-    }
+    console.log('test')
+    return this.marcasRepo.find({
+        order: {
+            marca: 'ASC'
+        }
+    });
+}
 
     getArrendadoresMaquinaria(): Promise<ArrendadoresMaquinaria[]> {
         console.log('test2')

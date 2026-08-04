@@ -28,6 +28,8 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { ProcedimientosModule } from './procedimientos/procedimientos.module';
 import { Procedimiento } from './procedimientos/procedimientos.entity';
+import { CajaChicaModule} from './caja-chica/caja-chica.module';
+import { MovimientoCajaChica } from './caja-chica/movimientos_caja_chica.entity';
 
 
 
@@ -62,7 +64,8 @@ import { Procedimiento } from './procedimientos/procedimientos.entity';
         MovimientoFinanciero,
         CategoriaFinanciera,
         MetodoPago,
-        Procedimiento
+        Procedimiento,
+        MovimientoCajaChica
       ],
       synchronize: true, // SOLO DEV
     }),
@@ -72,10 +75,9 @@ import { Procedimiento } from './procedimientos/procedimientos.entity';
     MaquinariaModule,
     FinanzasModule,
     ProcedimientosModule,
+    CajaChicaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule { }
-
-
