@@ -35,7 +35,7 @@ export class FinanzasService {
 
     ) { }
 
-    findMovimientos(anio?: string, mes?: string) {
+    async findMovimientos(anio?: string, mes?: string) {
 
         let where = '';
 
@@ -46,16 +46,33 @@ export class FinanzasService {
                 where = `WHERE YEAR(m.fecha_pago) = ${anio} AND MONTH(m.fecha_pago) = ${mes}`;
         }
 
-        return this.movimientoFinancieroRepo.query(`
+        const result = await this.movimientoFinancieroRepo.query(`
     SELECT 
       m.*,
       mp.nombre AS metodo_pago
     FROM movimientos_financieros m
     LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
     ${where}
-    ORDER BY m.fecha_pago,m.id ASC
+    ORDER BY m.orden,m.fecha_pago ASC
   `);
+        console.log(result)
+        return result;
     }
+
+
+    async actualizarOrdenMasivo(items: { id: number; orden: number }[]) {
+        return this.movimientoFinancieroRepo.manager.transaction(async (manager) => {
+            for (const item of items) {
+                await manager.query(
+                    `UPDATE movimientos_financieros SET orden = ? WHERE id = ?`,
+                    [item.orden, item.id]
+                );
+            }
+            return { success: true, actualizados: items.length };
+        });
+    }
+
+
 
     getCategorias(id_categoria: number): Promise<CategoriaFinanciera[]> {
         return this.categoriasFinancierasRepo.find({

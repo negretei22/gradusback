@@ -161,7 +161,10 @@ export class FinanzasController {
 
         return await this.finanzasService.guardaMovimiento(payload);
     }
-
+    @Post('movimientos/orden-masivo')
+    async actualizarOrdenMasivo(@Body() body: { items: { id: number; orden: number }[] }) {
+        return this.finanzasService.actualizarOrdenMasivo(body.items);
+    }
 
     @Post('update/:id')
     @UseInterceptors(archivosInterceptor)
