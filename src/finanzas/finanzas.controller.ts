@@ -11,11 +11,17 @@ import { join } from 'path';
 import { extname } from 'path';
 
 
-const storage = diskStorage({
+const storageFinanzas = diskStorage({
     destination: './uploads/movimientos',
     filename: (req, file, callback) => {
-        const nombreTemporal = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
-        callback(null, nombreTemporal);
+        const nombreCorrecto = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
+        // Opcional: prefijo con timestamp para evitar colisiones
+        // const nombreUnico = `${Date.now()}_${nombreCorrecto}`;
+        // callback(null, nombreUnico);
+
+        // O nombre exacto:
+        callback(null, nombreCorrecto);
     }
 });
 
@@ -85,7 +91,7 @@ async function renombrarArchivos(
 const archivosInterceptor = FileFieldsInterceptor([
     { name: 'archivo_factura', maxCount: 10 },
     { name: 'archivo_pago', maxCount: 10 },
-], { storage });
+], { storage: storageFinanzas });
 
 @Controller('finanzas')
 export class FinanzasController {

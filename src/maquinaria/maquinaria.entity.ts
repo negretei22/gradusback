@@ -27,8 +27,8 @@ export class Maquinaria {
   @Column({ type: 'text' })
   descripcion: number;
 
-  @Column({ type: 'int', nullable: true })
-  id_documentos: number;
+  @Column({ type: 'text', nullable: true })
+  documentos: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
   valor_compra: number;
