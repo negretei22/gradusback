@@ -55,7 +55,7 @@ export class FinanzasService {
     ${where}
     ORDER BY m.orden,m.fecha_pago ASC
   `);
-        console.log(result)
+       // console.log(result)
         return result;
     }
 

@@ -1,5 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
-import { User } from '../users/user.entity';
+import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('roles')
 export class Role {
@@ -7,11 +6,8 @@ export class Role {
   id: string;
 
   @Column({ unique: true })
-  nombre: string; // admin, gerente, contador, usuario
+  nombre: string;
 
   @Column({ nullable: true })
   descripcion: string;
-
-  @OneToMany(() => User, (user) => user.roleEntity)
-  users: User[];
 }

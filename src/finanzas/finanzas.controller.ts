@@ -16,7 +16,7 @@ import { Express } from 'express';
 import { renameSync } from 'fs';
 import { join, extname } from 'path';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../users/user.entity';
+import { UserRole } from 'src/shared/enums/user-role.enum';
 
 const storageFinanzas = diskStorage({
   destination: './uploads/movimientos',

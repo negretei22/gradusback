@@ -47,6 +47,11 @@ import { AuthModule } from './auth/auth.module';
 
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
+import { ModulosModule } from './modulos/modulos.module';
+import { Modulo } from './modulos/modulos.entity';
+import { RolesController } from './roles/roles.controller';
+import { RolesModule } from './roles/roles.module';
+
 
 @Module({
   imports: [
@@ -66,7 +71,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
         Municipios, Colonias, EmpresasParticipantes, Contratantes,
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
-        Procedimiento, MovimientoCajaChica
+        Procedimiento, MovimientoCajaChica, Modulo, Role
       ],
       synchronize: true,
     }),
@@ -78,6 +83,8 @@ import { RolesGuard } from './auth/guards/roles.guard';
     ProcedimientosModule,
     CajaChicaModule,
     AuthModule,
+    ModulosModule,
+    RolesModule,
   ],
   controllers: [AppController],
   providers: [

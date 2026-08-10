@@ -1,12 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn } from 'typeorm';
-import { Role } from '../roles/role.entity';
-
-export enum UserRole {
-  ADMIN = 'admin',
-  GERENTE = 'gerente',
-  CONTADOR = 'contador',
-  USUARIO = 'usuario',
-}
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { UserRole } from '../shared/enums/user-role.enum';
 
 @Entity('users')
 export class User {
@@ -31,10 +24,6 @@ export class User {
     default: UserRole.USUARIO,
   })
   role: UserRole;
-
-  @ManyToOne(() => Role, (role) => role.users, { nullable: true, eager: true })
-  @JoinColumn({ name: 'role_id' })
-  roleEntity: Role;
 
   @CreateDateColumn()
   createdAt: Date;
