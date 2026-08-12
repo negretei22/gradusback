@@ -5,10 +5,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
-import * as fs from 'fs';
-import { join, extname } from 'path';
-import { Like } from 'typeorm';
-
+import { renameSync } from 'fs';
+import { join, extname, basename } from 'path';
+import { Express } from 'express';
 
 const LABELS_MAP: { [key: string]: string } = {
     archivo_prefactura: 'Prefactura',
@@ -21,8 +20,6 @@ const LABELS_MAP: { [key: string]: string } = {
 @Injectable()
 export class FinanzasService {
 
-
-
     constructor(
         @InjectRepository(MovimientoFinanciero)
         private movimientoFinancieroRepo: Repository<MovimientoFinanciero>,
@@ -32,13 +29,10 @@ export class FinanzasService {
         private metodosPagoRepository: Repository<MetodoPago>,
         @InjectRepository(MovimientoCajaChica)
         private readonly movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
-
     ) { }
 
     async findMovimientos(anio?: string, mes?: string) {
-
         let where = '';
-
         if (anio && mes) {
             if (mes == '0')
                 where = `WHERE YEAR(m.fecha_pago) = ${anio}`;
@@ -47,18 +41,14 @@ export class FinanzasService {
         }
 
         const result = await this.movimientoFinancieroRepo.query(`
-    SELECT 
-      m.*,
-      mp.nombre AS metodo_pago
-    FROM movimientos_financieros m
-    LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
-    ${where}
-    ORDER BY m.orden,m.fecha_pago,m.fecha_factura ASC
-  `);
-       // console.log(result)
+            SELECT m.*, mp.nombre AS metodo_pago
+            FROM movimientos_financieros m
+            LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+            ${where}
+            ORDER BY m.orden, m.fecha_pago, m.fecha_factura ASC
+        `);
         return result;
     }
-
 
     async actualizarOrdenMasivo(items: { id: number; orden: number }[]) {
         return this.movimientoFinancieroRepo.manager.transaction(async (manager) => {
@@ -72,17 +62,12 @@ export class FinanzasService {
         });
     }
 
-
-
     getCategorias(id_categoria: number): Promise<CategoriaFinanciera[]> {
         return this.categoriasFinancierasRepo.find({
             where: { tipo_movimiento_id: id_categoria },
-            order: {
-                nombre: 'ASC'
-            }
+            order: { nombre: 'ASC' }
         });
     }
-
 
     async buscarPorRazonSocial(texto: string): Promise<MovimientoFinanciero[]> {
         return this.movimientoFinancieroRepo
@@ -95,6 +80,7 @@ export class FinanzasService {
             .limit(10)
             .getRawMany();
     }
+
     getRazonSocial(rfc: any): Promise<any[]> {
         return this.movimientoFinancieroRepo
             .createQueryBuilder('m')
@@ -113,43 +99,31 @@ export class FinanzasService {
         if (texto) {
             query.andWhere('mf.concepto LIKE :texto', { texto: `%${texto}%` });
         }
-
-        return query
-            .groupBy('mf.concepto')
-            .limit(10)
-            .getRawMany();
+        return query.groupBy('mf.concepto').limit(10).getRawMany();
     }
-
 
     async deleteMovimiento(id: number) {
-
         return await this.movimientoFinancieroRepo.delete(id);
-
     }
 
-
     async getSaldo(anio: number, mes: number) {
-
         let where = `YEAR(fecha_pago) = ${anio}`;
-
         if (mes > 0) {
             where += ` AND MONTH(fecha_pago) = ${mes}`;
         }
-
-        //console.log(where)
         const result = await this.categoriasFinancierasRepo.query(`
-    SELECT 
-      SUM(CASE WHEN tipo_movimiento_id = 1 THEN importe_sin_iva ELSE 0 END) AS ingresos,
-      SUM(CASE WHEN tipo_movimiento_id = 2 THEN importe_sin_iva ELSE 0 END) AS egresos,
-      SUM(CASE WHEN tipo_movimiento_id = 3 THEN importe_sin_iva ELSE 0 END) AS inversiones,
-      SUM(CASE 
-      WHEN tipo_movimiento_id = 1 THEN importe_sin_iva 
-      WHEN tipo_movimiento_id = 2 THEN -importe_sin_iva 
-      ELSE 0 
-    END) AS saldo
-    FROM movimientos_financieros where ${where}
-  `);
-
+            SELECT 
+                SUM(CASE WHEN tipo_movimiento_id = 1 THEN importe_sin_iva ELSE 0 END) AS ingresos,
+                SUM(CASE WHEN tipo_movimiento_id = 2 THEN importe_sin_iva ELSE 0 END) AS egresos,
+                SUM(CASE WHEN tipo_movimiento_id = 3 THEN importe_sin_iva ELSE 0 END) AS inversiones,
+                SUM(CASE 
+                    WHEN tipo_movimiento_id = 1 THEN importe_sin_iva 
+                    WHEN tipo_movimiento_id = 2 THEN -importe_sin_iva 
+                    ELSE 0 
+                END) AS saldo
+            FROM movimientos_financieros 
+            WHERE ${where}
+        `);
         return {
             ingresos: result[0].ingresos || 0,
             egresos: result[0].egresos || 0,
@@ -159,57 +133,99 @@ export class FinanzasService {
     }
 
     getMetodosPago(): Promise<MetodoPago[]> {
-        return this.metodosPagoRepository.find({
-            order: {
-                nombre: 'ASC'
-            }
-        });
+        return this.metodosPagoRepository.find({ order: { nombre: 'ASC' } });
     }
 
-    async guardaMovimiento(payload: any) {
+    // ========== GUARDAR CON ORDEN + RENOMBRADO POR ID ==========
+    async guardaMovimiento(payload: any, files: { [key: string]: Express.Multer.File[] }) {
 
-        const movimiento = this.movimientoFinancieroRepo.create(payload);
-        const resultado = await this.movimientoFinancieroRepo.save(movimiento);
+        // 1. Calcular orden automático del mes
+        const [anioStr, mesStr] = (payload.fecha_pago || '').split('-');
+        const anio = parseInt(anioStr, 10);
+        const mes = parseInt(mesStr, 10);
 
+        let maxOrden = 0;
+        if (!isNaN(anio) && !isNaN(mes)) {
+            const result = await this.movimientoFinancieroRepo.query(`
+                SELECT COALESCE(MAX(orden), 0) as maxOrden 
+                FROM movimientos_financieros 
+                WHERE YEAR(fecha_pago) = ? AND MONTH(fecha_pago) = ?
+            `, [anio, mes]);
+            maxOrden = Number(result[0]?.maxOrden || 0);
+        }
+        payload.orden = maxOrden + 1;
+
+        // 2. Guardar registro para obtener ID
+        const movimientoInicial = this.movimientoFinancieroRepo.create(payload);
+        const guardado = await this.movimientoFinancieroRepo.save(movimientoInicial) as any;
+        const id = guardado.id as number;
+
+        // 3. Renombrar archivos: {id}_{nombre_original}
+        const camposArchivo = ['archivo_factura', 'archivo_pago'];
+        const nombresFinales: { [key: string]: string } = {};
+
+        for (const campo of camposArchivo) {
+            const archivosCampo = files?.[campo];
+            if (!archivosCampo || !archivosCampo.length) continue;
+
+            const nombres: string[] = [];
+            for (const archivo of archivosCampo) {
+                const nombreOriginal = Buffer.from(archivo.originalname, 'latin1').toString('utf8');
+                const ext = extname(nombreOriginal);
+                const base = basename(nombreOriginal, ext);
+                const nuevoNombre = `${id}_${base}${ext}`;
+
+                const rutaVieja = join('./uploads/movimientos', archivo.filename);
+                const rutaNueva = join('./uploads/movimientos', nuevoNombre);
+
+                try {
+                    renameSync(rutaVieja, rutaNueva);
+                    nombres.push(nuevoNombre);
+                } catch (err) {
+                    console.error(`Error renombrando ${campo}:`, err);
+                    nombres.push(archivo.filename);
+                }
+            }
+            nombresFinales[campo] = nombres.join(',');
+        }
+
+        // 4. Actualizar registro con nombres finales
+        if (Object.keys(nombresFinales).length > 0) {
+            await this.movimientoFinancieroRepo.update(id, nombresFinales);
+            Object.assign(guardado, nombresFinales);
+        }
+
+        // 5. Caja chica (si aplica)
         if (
             Number(payload.tipo_movimiento_id) === 2 &&
             Number(payload.categoria_id) === 27
         ) {
-
             const cajaChica = this.movimientoCajaChicaRepo.create({
                 fecha: payload.fecha_pago,
                 concepto: payload.concepto,
-                ingreso: payload.importe_sin_iva,      // o el campo correspondiente
+                ingreso: payload.importe_sin_iva,
                 gasto: 0,
                 capturo: payload.razon_social,
                 orden: 0
             });
-
             await this.movimientoCajaChicaRepo.save(cajaChica);
         }
 
-        return resultado;
+        return guardado;
     }
-
 
     async getMovimiento(id: number) {
         return this.movimientoFinancieroRepo.findOne({ where: { id } });
     }
 
-
     async updateOrden(id: number, orden: number): Promise<any> {
-
         return await this.movimientoFinancieroRepo.query(`
-    UPDATE movimientos_financieros
-    SET orden = ?
-    WHERE id = ?
-  `, [orden, id]);
-
+            UPDATE movimientos_financieros SET orden = ? WHERE id = ?
+        `, [orden, id]);
     }
 
     async contarArchivosPorRfcYTipo(rfc: string, campo: string): Promise<number> {
         const rfcLimpio = (rfc || '').toUpperCase();
-
         const rows = await this.movimientoFinancieroRepo
             .createQueryBuilder('m')
             .select(`m.${campo}`, 'archivo')
@@ -223,41 +239,54 @@ export class FinanzasService {
                 total += r.archivo.split(',').filter((x: string) => x.trim()).length;
             }
         });
-
         return total;
     }
 
-    async updateMovimiento(id: number, payload: any) {
-
+    async updateMovimiento(id: number, payload: any, files?: { [key: string]: Express.Multer.File[] }) {
         const movimiento = await this.movimientoFinancieroRepo.findOne({ where: { id } });
-
         if (!movimiento) {
             throw new Error('Movimiento no encontrado');
         }
 
-        // Quita los campos "archivos_actuales_*" que no existen en la entidad
+        // Limpiar campos auxiliares
         Object.keys(LABELS_MAP).forEach(campoArchivo => {
-            // campoArchivo es "archivo_factura", "archivo_pago", etc.
-            const key = campoArchivo.replace('archivo_', ''); // "factura", "pago", etc.
+            const key = campoArchivo.replace('archivo_', '');
             delete payload[`archivos_actuales_${key}`];
         });
 
-        const camposArchivo = [
-            'archivo_prefactura', 'archivo_factura',
-            'archivo_nota_pago', 'archivo_pago', 'archivo_otra'
-        ];
+        // Procesar archivos nuevos si los hay
+        if (files) {
+            const camposArchivo = ['archivo_factura', 'archivo_pago'];
+            for (const campo of camposArchivo) {
+                const archivosCampo = files?.[campo];
+                if (!archivosCampo || !archivosCampo.length) continue;
 
-        const folioNuevo = (payload.folio_fiscal || 'SIN_FOLIO').replace(/[^a-zA-Z0-9-_]/g, '');
+                const nombres: string[] = [];
+                for (const archivo of archivosCampo) {
+                    const nombreOriginal = Buffer.from(archivo.originalname, 'latin1').toString('utf8');
+                    const ext = extname(nombreOriginal);
+                    const base = basename(nombreOriginal, ext);
+                    const nuevoNombre = `${id}_${base}${ext}`;
 
-        camposArchivo.forEach(campo => {
-            // ... el resto de tu lógica actual sigue exactamente igual
-        });
+                    const rutaVieja = join('./uploads/movimientos', archivo.filename);
+                    const rutaNueva = join('./uploads/movimientos', nuevoNombre);
+
+                    try {
+                        renameSync(rutaVieja, rutaNueva);
+                        nombres.push(nuevoNombre);
+                    } catch (err) {
+                        console.error(`Error renombrando ${campo}:`, err);
+                        nombres.push(archivo.filename);
+                    }
+                }
+
+                // Mergear con archivos actuales
+                const actuales = payload[campo] ? String(payload[campo]).split(',').filter(x => x.trim()) : [];
+                payload[campo] = [...actuales, ...nombres].join(',');
+            }
+        }
 
         await this.movimientoFinancieroRepo.update(id, payload);
-
         return { ok: true };
     }
-
-
-
 }
