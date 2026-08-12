@@ -53,7 +53,7 @@ export class FinanzasService {
     FROM movimientos_financieros m
     LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
     ${where}
-    ORDER BY m.orden,m.fecha_pago ASC
+    ORDER BY m.orden,m.fecha_pago,m.fecha_factura ASC
   `);
        // console.log(result)
         return result;
