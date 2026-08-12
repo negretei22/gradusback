@@ -12,13 +12,29 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+    
     if (!requiredRoles) return true;
 
     const { user } = context.switchToHttp().getRequest();
 
+    // ========== DEBUG ==========
+    console.log('🛡️ ROLES GUARD DEBUG');
+    console.log('req.user completo:', user);
+    console.log('Rol del usuario (user.role):', user?.role);
+    console.log('Roles requeridos:', requiredRoles);
+    console.log('Enum ADMIN:', UserRole.ADMIN);
+    console.log('Enum SUPERADMIN:', UserRole.SUPERADMIN);
+    // ===========================
 
+    if (!user || !user.role) {
+      console.log('❌ No hay user.role en el request');
+      return false;
+    }
 
+    const tieneAcceso = requiredRoles.some((role) => user.role === role);
     
-    return requiredRoles.some((role) => user.role === role);
+    console.log('¿Tiene acceso?', tieneAcceso);
+    
+    return tieneAcceso;
   }
 }
