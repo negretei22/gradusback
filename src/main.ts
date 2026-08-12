@@ -12,7 +12,6 @@ async function bootstrap() {
 
   // 👇 SEED: Inserta los módulos si la tabla está vacía
   const modulosService = app.get(ModulosService);
-  await modulosService.seedModulos();
   console.log('✅ Módulos verificados/cargados');
 
   await app.listen(3000);

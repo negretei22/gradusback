@@ -17,6 +17,12 @@ import { renameSync } from 'fs';
 import { join, extname } from 'path';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from 'src/shared/enums/user-role.enum';
+import { UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+
+
+
 
 const storageFinanzas = diskStorage({
   destination: './uploads/movimientos',
@@ -91,7 +97,10 @@ const archivosInterceptor = FileFieldsInterceptor(
   { storage: storageFinanzas },
 );
 
+
+
 @Controller('finanzas')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanzasController {
   constructor(private readonly finanzasService: FinanzasService) {}
 
