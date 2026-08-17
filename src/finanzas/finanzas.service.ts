@@ -186,7 +186,7 @@ export class FinanzasService {
                     nombres.push(archivo.filename);
                 }
             }
-            nombresFinales[campo] = nombres.join(',');
+            nombresFinales[campo] = JSON.stringify(nombres);
         }
 
         // 4. Actualizar registro con nombres finales
@@ -236,7 +236,13 @@ export class FinanzasService {
         let total = 0;
         rows.forEach(r => {
             if (r.archivo) {
-                total += r.archivo.split(',').filter((x: string) => x.trim()).length;
+                try {
+                    const arr = JSON.parse(r.archivo);
+                    total += Array.isArray(arr) ? arr.length : 0;
+                } catch {
+                    // Fallback para registros viejos con coma
+                    total += r.archivo.split(',').filter((x: string) => x.trim()).length;
+                }
             }
         });
         return total;
@@ -248,20 +254,28 @@ export class FinanzasService {
             throw new Error('Movimiento no encontrado');
         }
 
-        // Limpiar campos auxiliares
-        Object.keys(LABELS_MAP).forEach(campoArchivo => {
-            const key = campoArchivo.replace('archivo_', '');
-            delete payload[`archivos_actuales_${key}`];
-        });
+        const camposArchivo = ['archivo_factura', 'archivo_pago'];
 
-        // Procesar archivos nuevos si los hay
-        if (files) {
-            const camposArchivo = ['archivo_factura', 'archivo_pago'];
-            for (const campo of camposArchivo) {
-                const archivosCampo = files?.[campo];
-                if (!archivosCampo || !archivosCampo.length) continue;
+        for (const campo of camposArchivo) {
+            const key = campo.replace('archivo_', '');
+            const actualesRaw = payload[`archivos_actuales_${key}`];
 
-                const nombres: string[] = [];
+            // Archivos que el usuario decidió conservar (vienen como JSON desde el frontend)
+            let actuales: string[] = [];
+            if (actualesRaw) {
+                try {
+                    const parsed = JSON.parse(actualesRaw);
+                    actuales = Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    actuales = String(actualesRaw).split(',').map(x => x.trim()).filter(Boolean);
+                }
+            }
+
+            // Archivos nuevos subidos en esta petición
+            const archivosCampo = files?.[campo];
+            const nombresNuevos: string[] = [];
+
+            if (archivosCampo && archivosCampo.length) {
                 for (const archivo of archivosCampo) {
                     const nombreOriginal = Buffer.from(archivo.originalname, 'latin1').toString('utf8');
                     const ext = extname(nombreOriginal);
@@ -273,17 +287,20 @@ export class FinanzasService {
 
                     try {
                         renameSync(rutaVieja, rutaNueva);
-                        nombres.push(nuevoNombre);
+                        nombresNuevos.push(nuevoNombre);
                     } catch (err) {
                         console.error(`Error renombrando ${campo}:`, err);
-                        nombres.push(archivo.filename);
+                        nombresNuevos.push(archivo.filename);
                     }
                 }
-
-                // Mergear con archivos actuales
-                const actuales = payload[campo] ? String(payload[campo]).split(',').filter(x => x.trim()) : [];
-                payload[campo] = [...actuales, ...nombres].join(',');
             }
+
+            // Combinar los que se conservaron + los nuevos, y guardar como JSON
+            const combinados = [...actuales, ...nombresNuevos];
+            payload[campo] = JSON.stringify(combinados);
+
+            // Limpiar el campo auxiliar para que no se intente guardar en la tabla
+            delete payload[`archivos_actuales_${key}`];
         }
 
         await this.movimientoFinancieroRepo.update(id, payload);
