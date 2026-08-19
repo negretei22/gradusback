@@ -35,9 +35,9 @@ export class FinanzasService {
         let where = '';
         if (anio && mes) {
             if (mes == '0')
-                where = `WHERE YEAR(m.fecha_pago) = ${anio}`;
+                where = `WHERE YEAR(m.fecha_factura) = ${anio}`;
             else
-                where = `WHERE YEAR(m.fecha_pago) = ${anio} AND MONTH(m.fecha_pago) = ${mes}`;
+                where = `WHERE YEAR(m.fecha_factura) = ${anio} AND MONTH(m.fecha_factura) = ${mes}`;
         }
 
         const result = await this.movimientoFinancieroRepo.query(`
@@ -111,19 +111,23 @@ export class FinanzasService {
         if (mes > 0) {
             where += ` AND MONTH(fecha_pago) = ${mes}`;
         }
-        const result = await this.categoriasFinancierasRepo.query(`
-            SELECT 
-                SUM(CASE WHEN tipo_movimiento_id = 1 THEN importe_sin_iva ELSE 0 END) AS ingresos,
-                SUM(CASE WHEN tipo_movimiento_id = 2 THEN importe_sin_iva ELSE 0 END) AS egresos,
-                SUM(CASE WHEN tipo_movimiento_id = 3 THEN importe_sin_iva ELSE 0 END) AS inversiones,
-                SUM(CASE 
-                    WHEN tipo_movimiento_id = 1 THEN importe_sin_iva 
-                    WHEN tipo_movimiento_id = 2 THEN -importe_sin_iva 
-                    ELSE 0 
-                END) AS saldo
-            FROM movimientos_financieros 
-            WHERE ${where}
-        `);
+        const sql = `
+        SELECT 
+            SUM(CASE WHEN tipo_movimiento_id = 1 THEN importe_sin_iva ELSE 0 END) AS ingresos,
+            SUM(CASE WHEN tipo_movimiento_id = 2 THEN importe_sin_iva ELSE 0 END) AS egresos,
+            SUM(CASE WHEN tipo_movimiento_id = 3 THEN importe_sin_iva ELSE 0 END) AS inversiones,
+            SUM(CASE 
+                WHEN tipo_movimiento_id = 1 THEN importe_sin_iva 
+                WHEN tipo_movimiento_id = 2 THEN -importe_sin_iva 
+                ELSE 0 
+            END) AS saldo
+        FROM movimientos_financieros 
+        WHERE ${where}
+    `;
+
+        //  console.log('SQL getSaldo:', sql); // 👈 aquí lo ves en la consola del backend
+
+        const result = await this.categoriasFinancierasRepo.query(sql);
         return {
             ingresos: result[0].ingresos || 0,
             egresos: result[0].egresos || 0,
@@ -216,6 +220,34 @@ export class FinanzasService {
 
     async getMovimiento(id: number) {
         return this.movimientoFinancieroRepo.findOne({ where: { id } });
+    }
+
+    async getMovimientosPorCategoria(
+        categoriaId: number,
+        tipoMovimientoId: number,
+        anio?: number,
+        mes?: number,
+    ) {
+        let where = `m.categoria_id = ? AND m.tipo_movimiento_id = ?`;
+        const params: any[] = [categoriaId, tipoMovimientoId];
+
+        if (anio) {
+            where += ` AND YEAR(m.fecha_pago) = ?`;
+            params.push(anio);
+
+            if (mes && mes > 0) {
+                where += ` AND MONTH(m.fecha_pago) = ?`;
+                params.push(mes);
+            }
+        }
+
+        return await this.movimientoFinancieroRepo.query(`
+        SELECT m.*, mp.nombre AS metodo_pago
+        FROM movimientos_financieros m
+        LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+        WHERE ${where}
+        ORDER BY m.orden, m.fecha_pago, m.fecha_factura ASC
+    `, params);
     }
 
     async updateOrden(id: number, orden: number): Promise<any> {

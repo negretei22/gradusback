@@ -41,7 +41,7 @@ const archivosInterceptor = FileFieldsInterceptor(
 @Controller('finanzas')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanzasController {
-  constructor(private readonly finanzasService: FinanzasService) {}
+  constructor(private readonly finanzasService: FinanzasService) { }
 
   // ========== CONSULTAS ==========
   @Get()
@@ -62,6 +62,21 @@ export class FinanzasController {
   @Get('movimientos/buscar-conceptos')
   buscarConceptosPorRfc(@Query('rfc') rfc: string, @Query('texto') texto: string) {
     return this.finanzasService.buscarConceptosPorRfc(rfc, texto);
+  }
+
+  @Get('categoria/:categoriaId/tipo/:tipoId/anio/:anio/mes/:mes')
+  getMovimientosPorCategoria(
+    @Param('categoriaId') categoriaId: string,
+    @Param('tipoId') tipoId: string,
+    @Param('anio') anio: string,
+    @Param('mes') mes: string,
+  ) {
+    return this.finanzasService.getMovimientosPorCategoria(
+      Number(categoriaId),
+      Number(tipoId),
+      Number(anio),
+      Number(mes),
+    );
   }
 
   @Get('razon_social/:rfc')
