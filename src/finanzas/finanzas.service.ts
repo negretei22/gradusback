@@ -243,11 +243,11 @@ export class FinanzasService {
         const params: any[] = [categoriaId, tipoMovimientoId];
 
         if (anio) {
-            where += ` AND YEAR(m.fecha_pago) = ?`;
+            where += ` AND YEAR(m.fecha_factura) = ?`;
             params.push(anio);
 
             if (mes && mes > 0) {
-                where += ` AND MONTH(m.fecha_pago) = ?`;
+                where += ` AND MONTH(m.fecha_factura) = ?`;
                 params.push(mes);
             }
         }
