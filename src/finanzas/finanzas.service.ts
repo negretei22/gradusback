@@ -34,19 +34,30 @@ export class FinanzasService {
     async findMovimientos(anio?: string, mes?: string) {
         let where = '';
         if (anio && mes) {
+            const fechaEfectiva = `
+                CASE 
+                    WHEN m.fecha_factura = '1899-11-30' THEN m.fecha_pago 
+                    ELSE m.fecha_factura 
+                END
+            `;
+
             if (mes == '0')
-                where = `WHERE YEAR(m.fecha_factura) = ${anio}`;
+                where = `WHERE YEAR(${fechaEfectiva}) = ${anio}`;
             else
-                where = `WHERE YEAR(m.fecha_factura) = ${anio} AND MONTH(m.fecha_factura) = ${mes}`;
+                where = `WHERE YEAR(${fechaEfectiva}) = ${anio} AND MONTH(${fechaEfectiva}) = ${mes}`;
         }
 
-        const result = await this.movimientoFinancieroRepo.query(`
+        const sql = `
             SELECT m.*, mp.nombre AS metodo_pago
             FROM movimientos_financieros m
             LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
             ${where}
-            ORDER BY m.orden, m.fecha_pago, m.fecha_factura ASC
-        `);
+            ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
+        `;
+
+        console.log('SQL findMovimientos:', sql);
+
+        const result = await this.movimientoFinancieroRepo.query(sql);
         return result;
     }
 
@@ -107,9 +118,9 @@ export class FinanzasService {
     }
 
     async getSaldo(anio: number, mes: number) {
-        let where = `YEAR(fecha_pago) = ${anio}`;
+        let where = `YEAR(fecha_factura) = ${anio}`;
         if (mes > 0) {
-            where += ` AND MONTH(fecha_pago) = ${mes}`;
+            where += ` AND MONTH(fecha_factura) = ${mes}`;
         }
         const sql = `
         SELECT 
