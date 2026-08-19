@@ -241,13 +241,28 @@ export class FinanzasService {
             }
         }
 
-        return await this.movimientoFinancieroRepo.query(`
+        const sql = `
         SELECT m.*, mp.nombre AS metodo_pago
         FROM movimientos_financieros m
         LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
         WHERE ${where}
         ORDER BY m.orden, m.fecha_pago, m.fecha_factura ASC
-    `, params);
+    `;
+
+        console.log('SQL getMovimientosPorCategoria:', this.armarSqlDebug(sql, params));
+
+        return await this.movimientoFinancieroRepo.query(sql, params);
+    }
+
+    // Helper solo para debug - reemplaza los "?" con los valores reales
+    private armarSqlDebug(sql: string, params: any[]): string {
+        let i = 0;
+        return sql.replace(/\?/g, () => {
+            const valor = params[i++];
+            if (valor === null || valor === undefined) return 'NULL';
+            if (typeof valor === 'number') return String(valor);
+            return `'${valor}'`; // strings y fechas entre comillas
+        });
     }
 
     async updateOrden(id: number, orden: number): Promise<any> {
