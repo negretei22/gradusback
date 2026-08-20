@@ -36,7 +36,7 @@ export class FinanzasService {
         if (anio && mes) {
             const fechaEfectiva = `
                 CASE 
-                    WHEN m.fecha_factura = '1899-11-30' THEN m.fecha_pago 
+                    WHEN m.fecha_factura = '1899-11-30' or  m.fecha_factura = '0000-00-00' THEN m.fecha_pago 
                     ELSE m.fecha_factura 
                 END
             `;
