@@ -31,35 +31,35 @@ export class FinanzasService {
         private readonly movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
     ) { }
 
-    async findMovimientos(anio?: string, mes?: string) {
-        let where = '';
-        if (anio && mes) {
-            const fechaEfectiva = `
-                CASE 
-                    WHEN m.fecha_factura = '1899-11-30' or  m.fecha_factura = '0000-00-00' THEN m.fecha_pago 
-                    ELSE m.fecha_factura 
-                END
-            `;
-
-            if (mes == '0')
-                where = `WHERE YEAR(${fechaEfectiva}) = ${anio}`;
-            else
-                where = `WHERE YEAR(${fechaEfectiva}) = ${anio} AND MONTH(${fechaEfectiva}) = ${mes}`;
-        }
-
-        const sql = `
-            SELECT m.*, mp.nombre AS metodo_pago
-            FROM movimientos_financieros m
-            LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
-            ${where}
-            ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
+   async findMovimientos(anio?: string, mes?: string) {
+    let where = '';
+    if (anio && mes) {
+        const fechaEfectiva = `
+            CASE 
+                WHEN m.fecha_factura IN ('1899-11-30', '0000-00-00') THEN m.fecha_pago 
+                ELSE m.fecha_factura 
+            END
         `;
 
-        console.log('SQL findMovimientos:', sql);
-
-        const result = await this.movimientoFinancieroRepo.query(sql);
-        return result;
+        if (mes == '0')
+            where = `WHERE YEAR(${fechaEfectiva}) = ${anio}`;
+        else
+            where = `WHERE YEAR(${fechaEfectiva}) = ${anio} AND MONTH(${fechaEfectiva}) = ${mes}`;
     }
+
+    const sql = `
+        SELECT m.*, mp.nombre AS metodo_pago
+        FROM movimientos_financieros m
+        LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+        ${where}
+        ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
+    `;
+
+    console.log('SQL findMovimientos:', sql);
+
+    const result = await this.movimientoFinancieroRepo.query(sql);
+    return result;
+}
 
     async actualizarOrdenMasivo(items: { id: number; orden: number }[]) {
         return this.movimientoFinancieroRepo.manager.transaction(async (manager) => {
