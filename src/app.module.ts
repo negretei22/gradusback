@@ -26,6 +26,11 @@ import { CategoriaFinanciera } from './finanzas/categorias_financieras.entity';
 import { MetodoPago } from './finanzas/metodos_pago.entity';
 import { Procedimiento } from './procedimientos/procedimientos.entity';
 import { MovimientoCajaChica } from './caja-chica/movimientos_caja_chica.entity';
+import { Servicio } from './servicios/servicio.entity';
+import { ServicioDetalle } from './servicios/servicio-detalle.entity';
+import { TipoServicio } from './servicios/tipo-servicio.entity';
+
+
 
 // Modules
 import { UsersModule } from './users/users.module';
@@ -36,6 +41,7 @@ import { FinanzasModule } from './finanzas/finanzas.module';
 import { ProcedimientosModule } from './procedimientos/procedimientos.module';
 import { CajaChicaModule } from './caja-chica/caja-chica.module';
 import { AuthModule } from './auth/auth.module';
+import { ServicioModule } from './servicios/servicios.module';
 
 
 // Guards
@@ -51,6 +57,9 @@ import { ModulosModule } from './modulos/modulos.module';
 import { Modulo } from './modulos/modulos.entity';
 import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
+import { ServicioService } from './servicios/servicios.service';
+
+
 
 
 @Module({
@@ -71,7 +80,8 @@ import { RolesModule } from './roles/roles.module';
         Municipios, Colonias, EmpresasParticipantes, Contratantes,
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
-        Procedimiento, MovimientoCajaChica, Modulo, Role
+        Procedimiento, MovimientoCajaChica, Modulo, Role,
+        Servicio,TipoServicio, ServicioDetalle
       ],
       synchronize: true,
     }),
@@ -85,6 +95,7 @@ import { RolesModule } from './roles/roles.module';
     AuthModule,
     ModulosModule,
     RolesModule,
+    ServicioModule,
   ],
   controllers: [AppController],
   providers: [
