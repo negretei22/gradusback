@@ -27,7 +27,6 @@ import { MetodoPago } from './finanzas/metodos_pago.entity';
 import { Procedimiento } from './procedimientos/procedimientos.entity';
 import { MovimientoCajaChica } from './caja-chica/movimientos_caja_chica.entity';
 import { Servicio } from './servicios/servicio.entity';
-import { ServicioDetalle } from './servicios/servicio-detalle.entity';
 import { TipoServicio } from './servicios/tipo-servicio.entity';
 
 
@@ -81,7 +80,7 @@ import { ServicioService } from './servicios/servicios.service';
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
         Procedimiento, MovimientoCajaChica, Modulo, Role,
-        Servicio,TipoServicio, ServicioDetalle
+        Servicio,TipoServicio
       ],
       synchronize: true,
     }),

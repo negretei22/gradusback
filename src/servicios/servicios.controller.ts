@@ -10,12 +10,13 @@ import { UserRole } from 'src/shared/enums/user-role.enum';
 
 @Controller('servicio')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.SUPERADMIN)
+@Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
 export class ServicioController {
-  constructor(private readonly servicioService: ServicioService) {}
+  constructor(private readonly servicioService: ServicioService) { }
 
   @Get()
   getAll() {
+    console.log("hola")
     return this.servicioService.findAll();
   }
 
