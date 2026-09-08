@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
+
 // Entities
 import { User } from './users/user.entity';
 import { Role } from './roles/role.entity';
@@ -41,6 +42,7 @@ import { ProcedimientosModule } from './procedimientos/procedimientos.module';
 import { CajaChicaModule } from './caja-chica/caja-chica.module';
 import { AuthModule } from './auth/auth.module';
 import { ServicioModule } from './servicios/servicios.module';
+
 
 
 // Guards
@@ -94,7 +96,8 @@ import { ServicioService } from './servicios/servicios.service';
     AuthModule,
     ModulosModule,
     RolesModule,
-    ServicioModule,
+    ServicioModule
+    
   ],
   controllers: [AppController],
   providers: [
