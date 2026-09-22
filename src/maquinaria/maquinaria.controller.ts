@@ -13,7 +13,7 @@ const storageMaquinaria = diskStorage({
     // También arregla numero_serie si viene con acentos
     const numeroSerieRaw = req.body?.numero_serie || 'sin-serie';
     const numeroSerie = Buffer.from(numeroSerieRaw, 'latin1').toString('utf8');
-    
+
     const ruta = `./uploads/activos/${numeroSerie}`;
 
     if (!fs.existsSync(ruta)) {
@@ -63,7 +63,9 @@ export class MaquinariaController {
     @Body() payload: any
   ) {
     if (files && files.length) {
-      payload.documentos = files.map(f => f.filename).join(',');
+      payload.documentos = JSON.stringify(files.map(f => f.filename));
+    } else {
+      payload.documentos = JSON.stringify([]);
     }
     console.log(payload);
     return await this.maquinariaService.saveMaquinaria(payload);
@@ -75,18 +77,21 @@ export class MaquinariaController {
     @UploadedFiles() files: Express.Multer.File[],
     @Body() payload: any
   ) {
-    if (files && files.length) {
-      const nuevos = files.map(f => f.filename).join(',');
-      // conserva los documentos que ya existían + agrega los nuevos
-      payload.documentos = payload.documentos
-        ? `${payload.documentos},${nuevos}`
-        : nuevos;
+    // payload.documentos llega como JSON string desde el frontend (los que ya existían y no se quitaron)
+    let documentosExistentes: string[] = [];
+    try {
+      documentosExistentes = payload.documentos ? JSON.parse(payload.documentos) : [];
+    } catch {
+      documentosExistentes = [];
     }
-    console.log(payload);
+
+    const nuevos = files && files.length ? files.map(f => f.filename) : [];
+
+    payload.documentos = JSON.stringify([...documentosExistentes, ...nuevos]);
+
     console.log('PAYLOAD FINAL:', payload);
     return await this.maquinariaService.updateMaquinaria(payload);
   }
-
   @Delete('delete/:id')
   async eliminaPartida(@Param('id', ParseIntPipe) id: number) {
     console.log(id)

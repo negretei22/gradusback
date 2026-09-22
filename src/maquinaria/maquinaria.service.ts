@@ -103,19 +103,14 @@ export class MaquinariaService {
             }
         }
 
-        // ===== LIMPIEZA DE PDFs HUÉRFANOS =====
-        const documentosViejos = maquinaria.documentos
-            ? maquinaria.documentos.split(',').map(d => d.trim()).filter(Boolean)
-            : [];
-
-        const documentosNuevos = data.documentos
-            ? data.documentos.split(',').map((d: string) => d.trim()).filter(Boolean)
-            : [];
+        // ===== LIMPIEZA DE ARCHIVOS HUÉRFANOS =====
+        const documentosViejos: string[] = this.parseDocumentos(maquinaria.documentos);
+        const documentosNuevos: string[] = this.parseDocumentos(data.documentos);
 
         const documentosEliminados = documentosViejos.filter(d => !documentosNuevos.includes(d));
 
         for (const nombre of documentosEliminados) {
-            const rutaArchivo = join(process.cwd(), 'uploads', 'activos',data.numero_serie, nombre);
+            const rutaArchivo = join(process.cwd(), 'uploads', 'activos', data.numero_serie, nombre);
             try {
                 if (fs.existsSync(rutaArchivo)) {
                     fs.unlinkSync(rutaArchivo);
@@ -141,26 +136,38 @@ export class MaquinariaService {
             throw new NotFoundException({ message: 'Maquinaria no encontrada' });
         }
 
-        // Borra los PDFs físicos asociados, si tiene
-        if (maquinaria.documentos) {
-            const nombresArchivos = maquinaria.documentos.split(',').filter(n => n.trim());
+        const nombresArchivos = this.parseDocumentos(maquinaria.documentos);
 
-            for (const nombre of nombresArchivos) {
-                const rutaArchivo = join(process.cwd(), 'uploads', 'activos', nombre.trim());
+        for (const nombre of nombresArchivos) {
+            const rutaArchivo = join(process.cwd(), 'uploads', 'activos', maquinaria.numero_serie, nombre);
 
-                try {
-                    if (fs.existsSync(rutaArchivo)) {
-                        fs.unlinkSync(rutaArchivo);
-                        console.log('Archivo eliminado:', rutaArchivo);
-                    }
-                } catch (err) {
-                    // no tronamos el borrado del registro si un archivo falla al eliminarse
-                    console.error(`Error eliminando archivo ${nombre}:`, err);
+            try {
+                if (fs.existsSync(rutaArchivo)) {
+                    fs.unlinkSync(rutaArchivo);
+                    console.log('Archivo eliminado:', rutaArchivo);
                 }
+            } catch (err) {
+                console.error(`Error eliminando archivo ${nombre}:`, err);
             }
         }
 
         return await this.maquinariaRepo.remove(maquinaria);
+    }
+
+    // ===== Helper: parsea documentos de forma segura, soporta JSON nuevo y string viejo por comas =====
+    private parseDocumentos(valor: any): string[] {
+        if (!valor) return [];
+        if (Array.isArray(valor)) return valor;
+
+        try {
+            const parsed = JSON.parse(valor);
+            if (Array.isArray(parsed)) return parsed;
+        } catch {
+            // no era JSON válido, cae al formato viejo (comas)
+        }
+
+        // compatibilidad con registros viejos que aún tienen comas
+        return valor.split(',').map((d: string) => d.trim()).filter(Boolean);
     }
 
 }
