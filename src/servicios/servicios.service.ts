@@ -25,6 +25,11 @@ export class ServicioService {
       codigo,
       id_activo: body.id_activo,
       fecha_servicio: body.fecha_servicio,
+      servicio_programado: body.servicio_programado ?? null,
+      unidad_servicio: body.unidad_servicio ?? null,
+      horometro_servicio: body.horometro_servicio ?? null,
+      kilometraje: body.kilometraje ?? null,
+      responsable: body.responsable ?? null,
       total: body.total ?? 0,
       comentarios: body.comentarios ?? 0,
       fotos: fotosNuevas,
@@ -39,19 +44,19 @@ export class ServicioService {
 
     const fotosNuevas = files?.length ? this.moverArchivos(files, servicio.codigo) : [];
 
-    // fotos_existentes ahora debe venir como JSON string desde el frontend
     let existentes: FotoInfo[] = [];
     if (body.fotos_existentes) {
-      try {
-        existentes = JSON.parse(body.fotos_existentes);
-      } catch {
-        existentes = [];
-      }
+      try { existentes = JSON.parse(body.fotos_existentes); } catch { existentes = []; }
     }
 
     servicio.fotos = [...existentes, ...fotosNuevas];
     servicio.id_activo = body.id_activo;
     servicio.fecha_servicio = body.fecha_servicio;
+    servicio.servicio_programado = body.servicio_programado ?? null;
+    servicio.unidad_servicio = body.unidad_servicio ?? null;
+    servicio.horometro_servicio = body.horometro_servicio ?? null;
+    servicio.kilometraje = body.kilometraje ?? null;
+    servicio.responsable = body.responsable ?? null;
     servicio.total = body.total ?? 0;
     servicio.comentarios = body.comentarios ?? 0;
 

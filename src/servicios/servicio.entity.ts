@@ -33,4 +33,19 @@ export class Servicio {
 
   @UpdateDateColumn({ name: 'fecha_update' })
   fecha_update: Date;
+
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  servicio_programado: number; // valor del intervalo programado
+
+  @Column({ length: 10, nullable: true })
+  unidad_servicio: string; // 'HR' | 'KM'
+
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  horometro_servicio: number;
+
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  kilometraje: number;
+
+  @Column({ length: 100, nullable: true })
+  responsable: string;
 }
