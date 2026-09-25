@@ -11,7 +11,7 @@ export class MovimientoFinanciero {
 
   @PrimaryGeneratedColumn()
   id: number;
-  
+
   @Column({ type: 'varchar', length: 50 })
   tipo_movimiento_id: string;
 
@@ -37,8 +37,8 @@ export class MovimientoFinanciero {
   @Column({ type: 'text', nullable: true })
   razon_social: string;
 
- @Column({ type: 'text' })
-concepto: string;
+  @Column({ type: 'text' })
+  concepto: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   importe_sin_iva: number;
@@ -67,17 +67,20 @@ concepto: string;
   @Column({ type: 'int', default: 0 })
   orden: number;
 
-@Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   archivo_prefactura: string;
 
- @Column({ type: 'text', nullable: true })
-archivo_factura: string;
+  @Column({ type: 'tinyint', nullable: true })
+  donde_aplica: number;
+
+  @Column({ type: 'text', nullable: true })
+  archivo_factura: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   archivo_nota_pago: string;
 
-@Column({ type: 'text', nullable: true })
-archivo_pago: string;
+  @Column({ type: 'text', nullable: true })
+  archivo_pago: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   archivo_otra: string;
