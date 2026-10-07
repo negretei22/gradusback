@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Patch,
   Query,
   UploadedFiles,
   UseInterceptors,
@@ -101,6 +102,14 @@ export class FinanzasController {
 
   // ========== ESCRITURA ==========
   @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
+
+  @Patch('movimiento/:id/orden-archivos')
+  actualizarOrdenArchivos(
+    @Param('id') id: string,
+    @Body() body: { campo: string; archivos: string[] },
+  ) {
+    return this.finanzasService.actualizarOrdenArchivos(Number(id), body.campo, body.archivos);
+  }
   @Post('save')
   @UseInterceptors(archivosInterceptor)
   async guardaMovimiento(

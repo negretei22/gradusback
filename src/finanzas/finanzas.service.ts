@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm/repository/Repository';
 import { MovimientoFinanciero } from './movimientos_financieros.entity';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +17,8 @@ const LABELS_MAP: { [key: string]: string } = {
     archivo_otra: 'Otra',
 };
 
+const CAMPOS_ARCHIVO_PERMITIDOS = ['archivo_factura', 'archivo_pago'];
+
 @Injectable()
 export class FinanzasService {
 
@@ -31,23 +33,23 @@ export class FinanzasService {
         private readonly movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
     ) { }
 
-   async findMovimientos(anio?: string, mes?: string) {
-    let where = '';
-    if (anio && mes) {
-        const fechaEfectiva = `
+    async findMovimientos(anio?: string, mes?: string) {
+        let where = '';
+        if (anio && mes) {
+            const fechaEfectiva = `
             CASE 
                 WHEN m.fecha_factura IN ('1899-11-30', '0000-00-00') THEN m.fecha_pago 
                 ELSE m.fecha_factura 
             END
         `;
 
-        if (mes == '0')
-            where = `WHERE YEAR(${fechaEfectiva}) = ${anio}`;
-        else
-            where = `WHERE YEAR(${fechaEfectiva}) = ${anio} AND MONTH(${fechaEfectiva}) = ${mes}`;
-    }
+            if (mes == '0')
+                where = `WHERE YEAR(${fechaEfectiva}) = ${anio}`;
+            else
+                where = `WHERE YEAR(${fechaEfectiva}) = ${anio} AND MONTH(${fechaEfectiva}) = ${mes}`;
+        }
 
-    const sql = `
+        const sql = `
         SELECT m.*, mp.nombre AS metodo_pago
         FROM movimientos_financieros m
         LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
@@ -55,11 +57,11 @@ export class FinanzasService {
         ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
     `;
 
-    console.log('SQL findMovimientos:', sql);
+        console.log('SQL findMovimientos:', sql);
 
-    const result = await this.movimientoFinancieroRepo.query(sql);
-    return result;
-}
+        const result = await this.movimientoFinancieroRepo.query(sql);
+        return result;
+    }
 
     async actualizarOrdenMasivo(items: { id: number; orden: number }[]) {
         return this.movimientoFinancieroRepo.manager.transaction(async (manager) => {
@@ -78,6 +80,60 @@ export class FinanzasService {
             where: { tipo_movimiento_id: id_categoria },
             order: { nombre: 'ASC' }
         });
+    }
+
+
+    async actualizarOrdenArchivos(id: number, campo: string, archivos: string[]) {
+        // 1. Whitelist del campo (el nombre de columna no se puede parametrizar)
+        if (!CAMPOS_ARCHIVO_PERMITIDOS.includes(campo)) {
+            throw new BadRequestException('Campo inválido');
+        }
+
+        if (!Number.isInteger(id) || id <= 0) {
+            throw new BadRequestException('Id inválido');
+        }
+
+        if (!Array.isArray(archivos) || !archivos.every(a => typeof a === 'string')) {
+            throw new BadRequestException('Listado de archivos inválido');
+        }
+
+        // 2. Leer lo que hay actualmente en BD
+        const rows = await this.movimientoFinancieroRepo.query(
+            `SELECT ${campo} AS valor FROM movimientos_financieros WHERE id = ?`,
+            [id],
+        );
+        if (!rows.length) {
+            throw new NotFoundException('Movimiento no encontrado');
+        }
+
+        let actuales: string[] = [];
+        try {
+            const parsed = JSON.parse(rows[0].valor || '[]');
+            actuales = Array.isArray(parsed) ? parsed : [];
+        } catch {
+            actuales = [];
+        }
+
+        // 3. Todos los archivos recibidos deben existir ya en BD (no se permite meter archivos nuevos)
+        const setActuales = new Set(actuales);
+        if (!archivos.every(a => setActuales.has(a))) {
+            throw new BadRequestException('Hay archivos que no pertenecen a este movimiento');
+        }
+
+        // 4. Nuevo orden: primero lo que mandó el front, y al final lo que no mandó
+        //    (por si el usuario quitó uno en el modal sin guardar todavía; así no se borra de BD)
+        const ordenados = [...new Set(archivos)];
+        for (const a of actuales) {
+            if (!ordenados.includes(a)) ordenados.push(a);
+        }
+
+        // 5. Guardar
+        await this.movimientoFinancieroRepo.query(
+            `UPDATE movimientos_financieros SET ${campo} = ? WHERE id = ?`,
+            [JSON.stringify(ordenados), id],
+        );
+
+        return { ok: true, campo, archivos: ordenados };
     }
 
     async buscarPorRazonSocial(texto: string): Promise<MovimientoFinanciero[]> {
