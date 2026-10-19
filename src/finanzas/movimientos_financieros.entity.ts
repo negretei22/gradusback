@@ -90,4 +90,7 @@ export class MovimientoFinanciero {
 
   @UpdateDateColumn({ type: 'datetime' })
   updated_at: Date;
+
+  @Column({ type: 'tinyint', default: 0 })
+  pago_dividido: number;
 }

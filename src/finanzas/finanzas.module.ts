@@ -6,11 +6,12 @@ import { TypeOrmModule } from '@nestjs/typeorm/dist/typeorm.module';
 import { CategoriaFinanciera } from 'src/finanzas/categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
+import { MovimientoFinancieroPago } from './movimineto-financier-pago.entity';
 
 
 @Module({
    imports: [
-      TypeOrmModule.forFeature([MovimientoFinanciero,CategoriaFinanciera,MetodoPago,MovimientoCajaChica])
+      TypeOrmModule.forFeature([MovimientoFinanciero,CategoriaFinanciera,MetodoPago,MovimientoCajaChica,MovimientoFinancieroPago])
     ],
   controllers: [FinanzasController],
   providers: [FinanzasService]

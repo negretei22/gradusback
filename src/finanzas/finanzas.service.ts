@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
+import { MovimientoFinancieroPago } from './movimineto-financier-pago.entity';
 import { renameSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { Express } from 'express';
@@ -31,8 +32,57 @@ export class FinanzasService {
         private metodosPagoRepository: Repository<MetodoPago>,
         @InjectRepository(MovimientoCajaChica)
         private readonly movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
+        @InjectRepository(MovimientoFinancieroPago)
+        private pagosRepo: Repository<MovimientoFinancieroPago>,
     ) { }
 
+
+    // Parsea y valida las partes de pago. Devuelve [] si no es pago dividido.
+    private parsearPagos(payload: any): { metodo_pago_id: number; importe: number }[] {
+        const dividido = Number(payload.pago_dividido) === 1 || payload.pago_dividido === 'true';
+        if (!dividido) return [];
+
+        let pagos: any[] = [];
+        try {
+            pagos = typeof payload.pagos === 'string' ? JSON.parse(payload.pagos) : (payload.pagos || []);
+        } catch {
+            throw new BadRequestException('Formato de pagos inválido');
+        }
+
+        if (!Array.isArray(pagos) || pagos.length < 2) {
+            throw new BadRequestException('El pago dividido requiere al menos 2 partes');
+        }
+
+        const limpios = pagos.map(p => ({
+            metodo_pago_id: Number(p.metodo_pago_id),
+            importe: Math.round(Number(p.importe) * 100) / 100,
+        }));
+
+        if (limpios.some(p => !p.metodo_pago_id || !(p.importe > 0))) {
+            throw new BadRequestException('Cada parte necesita método de pago e importe mayor a 0');
+        }
+
+        const suma = limpios.reduce((s, p) => s + p.importe, 0);
+        const total = Number(payload.importe_sin_iva) || 0;
+        if (Math.abs(suma - total) > 0.01) {
+            throw new BadRequestException(
+                `La suma de los pagos (${suma.toFixed(2)}) no coincide con el importe total (${total.toFixed(2)})`,
+            );
+        }
+        return limpios;
+    }
+
+    private async guardarPagos(movimientoId: number, pagos: { metodo_pago_id: number; importe: number }[]) {
+        await this.pagosRepo.delete({ movimiento_id: movimientoId });
+        if (!pagos.length) return;
+        await this.pagosRepo.save(
+            pagos.map(p => this.pagosRepo.create({ movimiento_id: movimientoId, ...p })),
+        );
+    }
+
+    async getPagosMovimiento(id: number) {
+        return this.pagosRepo.find({ where: { movimiento_id: id }, order: { id: 'ASC' } });
+    }
     async findMovimientos(anio?: string, mes?: string) {
         let where = '';
         if (anio && mes) {
@@ -50,8 +100,12 @@ export class FinanzasService {
         }
 
         const sql = `
-        SELECT m.*, mp.nombre AS metodo_pago
-        FROM movimientos_financieros m
+       SELECT m.*, mp.nombre AS metodo_pago,
+  (SELECT GROUP_CONCAT(CONCAT(mp2.nombre, ': $', FORMAT(p.importe, 2)) SEPARATOR ' / ')
+   FROM movimientos_financieros_pagos p
+   JOIN metodos_pago mp2 ON mp2.id = p.metodo_pago_id
+   WHERE p.movimiento_id = m.id) AS pagos_detalle
+FROM movimientos_financieros m
         LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
         ${where}
         ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
@@ -208,7 +262,17 @@ export class FinanzasService {
     }
 
     // ========== GUARDAR CON ORDEN + RENOMBRADO POR ID ==========
+    // Asegúrate de tener este import arriba del archivo:
+    // import { MovimientoFinancieroPago } from './movimiento-financiero-pago.entity';
+    // (ajusta la ruta al nombre real de tu archivo)
+
     async guardaMovimiento(payload: any, files: { [key: string]: Express.Multer.File[] }) {
+
+        // 0. Pago dividido: validar y limpiar payload (antes de tocar la BD)
+        const pagos = this.parsearPagos(payload);
+        payload.pago_dividido = pagos.length ? 1 : 0;
+        if (pagos.length) payload.metodo_pago_id = pagos[0].metodo_pago_id;
+        delete payload.pagos; // no es columna de la tabla
 
         // 1. Calcular orden automático del mes
         const [anioStr, mesStr] = (payload.fecha_pago || '').split('-');
@@ -218,17 +282,35 @@ export class FinanzasService {
         let maxOrden = 0;
         if (!isNaN(anio) && !isNaN(mes)) {
             const result = await this.movimientoFinancieroRepo.query(`
-                SELECT COALESCE(MAX(orden), 0) as maxOrden 
-                FROM movimientos_financieros 
-                WHERE YEAR(fecha_pago) = ? AND MONTH(fecha_pago) = ?
-            `, [anio, mes]);
+            SELECT COALESCE(MAX(orden), 0) as maxOrden 
+            FROM movimientos_financieros 
+            WHERE YEAR(fecha_pago) = ? AND MONTH(fecha_pago) = ?
+        `, [anio, mes]);
             maxOrden = Number(result[0]?.maxOrden || 0);
         }
         payload.orden = maxOrden + 1;
 
-        // 2. Guardar registro para obtener ID
-        const movimientoInicial = this.movimientoFinancieroRepo.create(payload);
-        const guardado = await this.movimientoFinancieroRepo.save(movimientoInicial) as any;
+        // 2. Guardar movimiento + partes de pago en UNA transacción
+        //    (si algo falla, se hace rollback y no queda ningún registro huérfano)
+        const guardado = await this.movimientoFinancieroRepo.manager.transaction(async (manager) => {
+            const mov = await manager.save(
+                manager.create(MovimientoFinanciero, payload),
+            ) as any;
+
+            if (pagos.length) {
+                await manager.save(
+                    pagos.map(p =>
+                        manager.create(MovimientoFinancieroPago, {
+                            movimiento_id: mov.id,
+                            metodo_pago_id: p.metodo_pago_id,
+                            importe: p.importe,
+                        }),
+                    ),
+                );
+            }
+            return mov;
+        });
+
         const id = guardado.id as number;
 
         // 3. Renombrar archivos: {id}_{nombre_original}
@@ -363,6 +445,12 @@ export class FinanzasService {
     }
 
     async updateMovimiento(id: number, payload: any, files?: { [key: string]: Express.Multer.File[] }) {
+
+        const pagos = this.parsearPagos(payload);
+        payload.pago_dividido = pagos.length ? 1 : 0;
+        if (pagos.length) payload.metodo_pago_id = pagos[0].metodo_pago_id;
+        delete payload.pagos;
+
         const movimiento = await this.movimientoFinancieroRepo.findOne({ where: { id } });
         if (!movimiento) {
             throw new Error('Movimiento no encontrado');
@@ -418,6 +506,9 @@ export class FinanzasService {
         }
 
         await this.movimientoFinancieroRepo.update(id, payload);
+
+        await this.guardarPagos(id, pagos);
+
         return { ok: true };
     }
 }

@@ -60,6 +60,11 @@ export class FinanzasController {
     return this.finanzasService.buscarPorRazonSocial(texto);
   }
 
+  @Get('movimiento/:id/pagos')
+  getPagosMovimiento(@Param('id') id: string) {
+    return this.finanzasService.getPagosMovimiento(Number(id));
+  }
+
   @Get('movimientos/buscar-conceptos')
   buscarConceptosPorRfc(@Query('rfc') rfc: string, @Query('texto') texto: string) {
     return this.finanzasService.buscarConceptosPorRfc(rfc, texto);
