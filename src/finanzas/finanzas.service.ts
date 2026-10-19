@@ -6,7 +6,7 @@ import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
 import { MovimientoFinancieroPago } from './movimineto-financier-pago.entity';
-import { renameSync } from 'fs';
+import { renameSync, unlinkSync, existsSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { Express } from 'express';
 
@@ -63,6 +63,8 @@ export class FinanzasService {
         }
 
         const suma = limpios.reduce((s, p) => s + p.importe, 0);
+        payload.importe_sin_iva = Math.round(suma * 100) / 100;
+
         const total = Number(payload.importe_sin_iva) || 0;
         if (Math.abs(suma - total) > 0.01) {
             throw new BadRequestException(
@@ -224,7 +226,35 @@ FROM movimientos_financieros m
     }
 
     async deleteMovimiento(id: number) {
-        return await this.movimientoFinancieroRepo.delete(id);
+        const mov = await this.movimientoFinancieroRepo.findOne({ where: { id } });
+
+        const resultado = await this.movimientoFinancieroRepo.manager.transaction(async (manager) => {
+            await manager.delete(MovimientoFinancieroPago, { movimiento_id: id });
+            return await manager.delete(MovimientoFinanciero, id);
+        });
+
+        // Borra archivos solo si el registro se eliminó correctamente
+        if (mov) {
+            for (const campo of ['archivo_factura', 'archivo_pago'] as const) {
+                let nombres: string[] = [];
+                try {
+                    const parsed = JSON.parse(mov[campo] || '[]');
+                    nombres = Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    nombres = [];
+                }
+                for (const nombre of nombres) {
+                    const ruta = join('./uploads/movimientos', basename(nombre)); // basename evita path traversal
+                    try {
+                        if (existsSync(ruta)) unlinkSync(ruta);
+                    } catch (err) {
+                        console.error(`No se pudo borrar ${ruta}:`, err);
+                    }
+                }
+            }
+        }
+
+        return resultado;
     }
 
     async getSaldo(anio: number, mes: number) {
