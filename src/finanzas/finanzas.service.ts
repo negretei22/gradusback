@@ -414,9 +414,9 @@ FROM movimientos_financieros m
             where += ` AND YEAR(m.fecha_factura) = ?`;
             params.push(anio);
 
-            if (mes && mes > 0) {
-                where += ` AND MONTH(m.fecha_factura) = ?`;
-                params.push(mes);
+            if (mes && mes > 0 && anio) {
+                where += ` AND YEAR(m.fecha_factura) = ? AND MONTH(m.fecha_factura) = ?`;
+                params.push(anio, mes);
             }
         }
 
@@ -425,7 +425,7 @@ FROM movimientos_financieros m
         FROM movimientos_financieros m
         LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
         WHERE ${where}
-        ORDER BY m.orden, m.fecha_pago, m.fecha_factura ASC
+        ORDER BY m.fecha_pago asc, m.fecha_factura ASC
     `;
 
         console.log('SQL getMovimientosPorCategoria:', this.armarSqlDebug(sql, params));
