@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
 import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
-import { MovimientoFinancieroPago } from './movimineto-financier-pago.entity';
+import { MovimientoFinancieroPago } from './movimiento-financiero-pago.entity';
 import { renameSync, unlinkSync, existsSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { Express } from 'express';

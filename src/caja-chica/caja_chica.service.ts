@@ -1,114 +1,220 @@
 import { Injectable } from '@nestjs/common';
-import { Repository } from 'typeorm/repository/Repository';
-import { InjectRepository } from '@nestjs/typeorm';
-import { MovimientoCajaChica } from './movimientos_caja_chica.entity';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import * as Papa from 'papaparse';
+
 
 @Injectable()
 export class CajaChicaService {
 
-  constructor(
-    @InjectRepository(MovimientoCajaChica)
-    private movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
-  ) { }
+  constructor(@InjectDataSource() private dataSource: DataSource) { }
 
-  // ===== LISTAR con saldo corrido =====
-  // Importante: el saldo se calcula sobre TODO el historial (no solo el mes
-  // filtrado), para que se arrastre correctamente igual que en tu Excel.
-  // Después de calcularlo, se filtra por año/mes para mostrar solo esas filas.
-  findMovimientos(anio?: string, mes?: string) {
+  private cache: { data: any[]; ts: number } | null = null;
+  private readonly TTL_MS = 30_000;
 
-    let where = '';
+  // "$1,234.50" -> 1234.5 | "($50.00)" o "-$50" -> -50
+  private aNumero(v: string): number {
+    const s = (v ?? '').trim();
+    if (!s) return 0;
+    const neg = /^\(.*\)$/.test(s) || s.startsWith('-');
+    const n = parseFloat(s.replace(/[^0-9.]/g, ''));
+    return isNaN(n) ? 0 : (neg ? -n : n);
+  }
 
-    if (anio && mes) {
-      if (mes === '0') {
-        where = `WHERE YEAR(t.fecha) = ${anio}`;
-      } else {
-        where = `WHERE YEAR(t.fecha) = ${anio} AND MONTH(t.fecha) = ${mes}`;
+  // dd/MM/yyyy -> yyyy-MM-dd
+  private aFecha(v: string): string {
+    const s = (v ?? '').trim().toLowerCase();
+
+    // 01-ene-2026
+    const meses: Record<string, string> = {
+      ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06',
+      jul: '07', ago: '08', sep: '09', set: '09', oct: '10', nov: '11', dic: '12',
+    };
+    let m = s.match(/^(\d{1,2})[-\/ ]([a-záéíóú]{3})[a-z]*\.?[-\/ ](\d{4})$/);
+    if (m && meses[m[2]]) return `${m[3]}-${meses[m[2]]}-${m[1].padStart(2, '0')}`;
+
+    // dd/MM/yyyy
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+
+    // yyyy-MM-dd
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+
+    return '';
+  }
+
+
+  private async leerTodo(): Promise<any[]> {
+    /*if (this.cache && Date.now() - this.cache.ts < this.TTL_MS) {
+      return this.cache.data;
+    }*/
+
+
+    const gid = process.env.SHEET_GID;
+
+    const url = `https://docs.google.com/spreadsheets/d/${process.env.SHEET_ID}/export?format=csv&gid=${gid}`;
+
+    const resp = await fetch(url);
+
+    if (!resp.ok) {
+      throw new Error(`No se pudo leer el Sheet (${resp.status})`);
+    }
+
+    const csv = await resp.text();
+
+    const filas = Papa.parse<string[]>(csv, {
+      skipEmptyLines: false,
+    }).data;
+
+    console.log('GID:', gid);
+    console.log('URL:', url);
+    console.log('PRIMERAS FILAS:', JSON.stringify(filas.slice(0, 10), null, 2));
+    console.log('FECHAS ORIGINALES:', filas.slice(0, 10).map(r => r[0]));
+    console.log('FECHAS CONVERTIDAS:', filas.slice(0, 10).map(r => this.aFecha(r[0])));
+
+    const esPrimeraHoja = gid === '428204613';
+
+    const columnas = esPrimeraHoja
+      ? {
+        numero: 0,
+        fecha: 1,
+        aplicado_a: 2,
+        concepto: 3,
+        gasto: 4,
+        ingreso: 5,
+        saldo: 6,
+      }
+      : {
+        numero: 0,
+        fecha: 1,
+        aplicado_a: -1,
+        concepto: 2,
+        gasto: 3,
+        ingreso: 4,
+        saldo: 5,
+      };
+
+    let running = 0;
+
+    const data = filas
+      .map((r, i) => ({ r, fila: i + 1 }))
+      .filter(({ r }) =>
+        /^\d+$/.test((r[columnas.numero] ?? '').trim()) &&
+        this.aFecha(r[columnas.fecha]) !== ''
+      )
+      .map(({ r, fila }, idx) => {
+        const gasto = this.aNumero(r[columnas.gasto]);
+        const ingreso = this.aNumero(r[columnas.ingreso]);
+
+        running += ingreso - gasto;
+
+        return {
+          id: fila,
+          fecha: this.aFecha(r[columnas.fecha]),
+
+          aplicado_a:
+            columnas.aplicado_a >= 0
+              ? r[columnas.aplicado_a] ?? ''
+              : '',
+
+          concepto: (r[columnas.concepto] ?? '').toUpperCase(),
+
+          gasto,
+          ingreso,
+
+          saldo_actual: r[columnas.saldo]?.trim()
+            ? this.aNumero(r[columnas.saldo])
+            : running,
+
+          capturo: 'VICKY',
+
+          orden: idx + 1,
+        };
+      });
+
+    this.cache = { data, ts: Date.now() };
+
+    return data;
+  }
+
+
+  // Marca cada gasto que ya existe en movimientos_financieros
+  private async marcarMovimientosFinancieros(movs: any[]): Promise<any[]> {
+    const gastos = movs.filter(m => m.gasto > 0);
+    if (!gastos.length) {
+      return movs.map(m => ({ ...m, tiene_movimiento: false, movimiento_financiero_id: null }));
+    }
+
+    const fechas = gastos.map(m => m.fecha).sort();
+    const desde = fechas[0];
+    const hasta = fechas[fechas.length - 1];
+
+    const filas: any[] = await this.dataSource.query(
+      `SELECT id,
+            DATE_FORMAT(fecha_pago, '%Y-%m-%d')    AS fecha_pago,
+            DATE_FORMAT(fecha_factura, '%Y-%m-%d') AS fecha_factura,
+            importe_sin_iva
+     FROM movimientos_financieros
+     WHERE (fecha_pago BETWEEN ? AND ? OR fecha_factura BETWEEN ? AND ?)`,
+      [desde, hasta, desde, hasta],
+    );
+
+    // índice: "fecha|monto" -> id del movimiento financiero
+    const indice = new Map<string, number>();
+    for (const f of filas) {
+      const monto = Number(f.importe_sin_iva).toFixed(2);
+      for (const fecha of [f.fecha_pago, f.fecha_factura]) {
+        if (fecha) {
+          const key = `${fecha}|${monto}`;
+          if (!indice.has(key)) indice.set(key, f.id);
+        }
       }
     }
 
-    // Nota: usa variables de sesión (@running) en vez de window functions (OVER),
-    // para que funcione también en MySQL 5.7 (Azure Database for MySQL a veces
-    // sigue en 5.7). Si tu MySQL es 8.0+, la versión con OVER también funcionaría,
-    // pero esta es compatible con ambas.
-    return this.movimientoCajaChicaRepo.query(`
-      SELECT * FROM (
-        SELECT
-          id, fecha, UPPER(concepto) AS concepto, gasto, ingreso, capturo, orden,
-          @running := @running + (ingreso - gasto) AS saldo_actual
-        FROM movimientos_caja_chica, (SELECT @running := 0) r
-        ORDER BY fecha ASC, id ASC
-      ) t
-      ${where}
-      ORDER BY t.fecha ASC, t.id ASC
-    `);
+    return movs.map(m => {
+      const id = m.gasto > 0 ? indice.get(`${m.fecha}|${m.gasto.toFixed(2)}`) : undefined;
+      return { ...m, tiene_movimiento: id !== undefined, movimiento_financiero_id: id ?? null };
+    });
   }
 
-  // ===== TOTALES para las cards =====
-  // total_gasto / total_ingreso: solo del periodo (mes) seleccionado.
-  // saldo_actual: saldo real de la caja HOY (todo el historial).
+  private delPeriodo(todos: any[], anio: number, mes: number) {
+    return todos.filter(m => {
+      const [y, mm] = m.fecha.split('-').map(Number);
+      return y === Number(anio) && (!Number(mes) || mm === Number(mes));
+    });
+  }
+
+  async findMovimientos(anio?: string, mes?: string) {
+
+    const todos = await this.leerTodo();
+    const lista = anio ? this.delPeriodo(todos, Number(anio), Number(mes)) : todos;
+    return this.marcarMovimientosFinancieros(lista);
+  }
+
   async getSaldo(anio: number, mes: number) {
-
-    let where = `YEAR(fecha) = ${anio}`;
-    if (mes > 0) {
-      where += ` AND MONTH(fecha) = ${mes}`;
-    }
-
-    const periodo = await this.movimientoCajaChicaRepo.query(`
-      SELECT
-        SUM(gasto)   AS total_gasto,
-        SUM(ingreso) AS total_ingreso
-      FROM movimientos_caja_chica
-      WHERE ${where}
-    `);
-
-    const global = await this.movimientoCajaChicaRepo.query(`
-      SELECT SUM(ingreso - gasto) AS saldo_actual
-      FROM movimientos_caja_chica
-    `);
-
+    const todos = await this.leerTodo();
+    const periodo = this.delPeriodo(todos, anio, mes);
     return {
-      total_gasto: periodo[0].total_gasto || 0,
-      total_ingreso: periodo[0].total_ingreso || 0,
-      saldo_actual: global[0].saldo_actual || 0
+      total_gasto: periodo.reduce((s, m) => s + m.gasto, 0),
+      total_ingreso: periodo.reduce((s, m) => s + m.ingreso, 0),
+      saldo_actual: todos.length ? todos[todos.length - 1].saldo_actual : 0,
     };
   }
 
-  async guardaMovimiento(payload: any) {
-    const movimiento = this.movimientoCajaChicaRepo.create(payload);
-    return await this.movimientoCajaChicaRepo.save(movimiento);
+  async getMovimientoFinanciero(id: number) {
+    const filas: any[] = await this.dataSource.query(
+      `SELECT m.*,
+            DATE_FORMAT(m.fecha_pago, '%Y-%m-%d')    AS fecha_pago_txt,
+            DATE_FORMAT(m.fecha_factura, '%Y-%m-%d') AS fecha_factura_txt
+     FROM movimientos_financieros m
+     WHERE m.id = ?`,
+      [Number(id)],
+    );
+    return filas[0] ?? null;
   }
 
   async getMovimiento(id: number) {
-    const movimiento = await this.movimientoCajaChicaRepo.findOne({ where: { id } });
-    if (movimiento) {
-      movimiento.concepto = movimiento.concepto.toUpperCase();
-    }
-    return movimiento;
-  }
-
-  async updateMovimiento(id: number, payload: any) {
-
-    const movimiento = await this.movimientoCajaChicaRepo.findOne({ where: { id } });
-
-    if (!movimiento) {
-      throw new Error('Movimiento no encontrado');
-    }
-
-    await this.movimientoCajaChicaRepo.update(id, payload);
-
-    return { ok: true };
-  }
-
-  async deleteMovimiento(id: number) {
-    return await this.movimientoCajaChicaRepo.delete(id);
-  }
-
-  async updateOrden(id: number, orden: number): Promise<any> {
-    return await this.movimientoCajaChicaRepo.query(`
-      UPDATE movimientos_caja_chica
-      SET orden = ?
-      WHERE id = ?
-    `, [orden, id]);
+    return (await this.leerTodo()).find(m => m.id === Number(id)) ?? null;
   }
 }

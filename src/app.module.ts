@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ConfigModule } from '@nestjs/config';
 import { join } from 'path';
 
 
@@ -29,7 +30,7 @@ import { Procedimiento } from './procedimientos/procedimientos.entity';
 import { MovimientoCajaChica } from './caja-chica/movimientos_caja_chica.entity';
 import { Servicio } from './servicios/servicio.entity';
 import { TipoServicio } from './servicios/tipo-servicio.entity';
-import { MovimientoFinancieroPago } from './finanzas/movimineto-financier-pago.entity';
+import { MovimientoFinancieroPago } from './finanzas/movimiento-financiero-pago.entity';
 
 
 
@@ -66,6 +67,7 @@ import { ServicioService } from './servicios/servicios.service';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'),
       serveRoot: '/uploads',
