@@ -60,6 +60,7 @@ import { ModulosModule } from './modulos/modulos.module';
 import { Modulo } from './modulos/modulos.entity';
 import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
+import { BancosCajaChicaModule } from './bancos-caja-chica/bancos-caja-chica.module';
 import { ServicioService } from './servicios/servicios.service';
 
 
@@ -99,7 +100,8 @@ import { ServicioService } from './servicios/servicios.service';
     AuthModule,
     ModulosModule,
     RolesModule,
-    ServicioModule
+    ServicioModule,
+    BancosCajaChicaModule
     
   ],
   controllers: [AppController],

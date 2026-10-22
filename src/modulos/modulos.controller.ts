@@ -18,7 +18,7 @@ import { UserRole } from 'src/shared/enums/user-role.enum';
 @Controller('modulos')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ModulosController {
-  constructor(private readonly modulosService: ModulosService) {}
+  constructor(private readonly modulosService: ModulosService) { }
 
   @Get()
   async getModulos(@Req() req) {
@@ -31,7 +31,10 @@ export class ModulosController {
   async getAll() {
     return this.modulosService.findAll();
   }
-
+  @Get('menu')
+  async getMenu(@Req() req) {
+    return this.modulosService.findMenuByRole(req.user.role);
+  }
   @Get('permisos/:ruta')
   async getPermisos(@Req() req, @Param('ruta') ruta: string) {
     const userRole = req.user.role;
@@ -85,5 +88,11 @@ export class ModulosController {
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.modulosService.remove(id);
+  }
+
+  @Roles(UserRole.SUPERADMIN)
+  @Post('migrar-menu')
+  migrarMenu() {
+    return this.modulosService.migrarMenu();
   }
 }

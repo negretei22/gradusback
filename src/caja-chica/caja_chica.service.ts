@@ -45,13 +45,12 @@ export class CajaChicaService {
   }
 
 
-  private async leerTodo(): Promise<any[]> {
+  async leerTodo(gid: string = process.env.SHEET_GID!): Promise<any[]> {
     /*if (this.cache && Date.now() - this.cache.ts < this.TTL_MS) {
       return this.cache.data;
     }*/
 
 
-    const gid = process.env.SHEET_GID;
 
     const url = `https://docs.google.com/spreadsheets/d/${process.env.SHEET_ID}/export?format=csv&gid=${gid}`;
 
