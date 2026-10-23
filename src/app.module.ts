@@ -44,6 +44,7 @@ import { ProcedimientosModule } from './procedimientos/procedimientos.module';
 import { CajaChicaModule } from './caja-chica/caja-chica.module';
 import { AuthModule } from './auth/auth.module';
 import { ServicioModule } from './servicios/servicios.module';
+import { ConciliacionModule } from './conciliacion/conciliacion.module';
 
 
 
@@ -62,6 +63,8 @@ import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
 import { BancosCajaChicaModule } from './bancos-caja-chica/bancos-caja-chica.module';
 import { ServicioService } from './servicios/servicios.service';
+import { ConciliacionController } from './conciliacion/conciliacion.controller';
+
 
 
 
@@ -101,7 +104,8 @@ import { ServicioService } from './servicios/servicios.service';
     ModulosModule,
     RolesModule,
     ServicioModule,
-    BancosCajaChicaModule
+    BancosCajaChicaModule,
+    ConciliacionModule
     
   ],
   controllers: [AppController],

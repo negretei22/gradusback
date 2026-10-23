@@ -8,7 +8,7 @@ export class ModulosService {
   constructor(
     @InjectRepository(Modulo)
     private modulosRepository: Repository<Modulo>,
-  ) {}
+  ) { }
 
   // Módulos a los que el rol tiene acceso (cualquier permiso)
   async findByRole(role: string): Promise<Modulo[]> {
@@ -19,7 +19,7 @@ export class ModulosService {
 
     return modulos.filter((m) => {
       const permisosRol = m.permisos?.[role];
-      return Array.isArray(permisosRol) && permisosRol.length > 0;
+      return Array.isArray(permisosRol) && permisosRol.includes('ver');
     });
   }
 
