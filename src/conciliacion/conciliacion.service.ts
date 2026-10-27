@@ -174,7 +174,10 @@ export class ConciliacionService {
                 }
             }
 
-            if (!elegido) return;
+            if (!elegido) {
+                console.warn('⚠️ NO CUADRÓ:', { fecha, saldoPrev, cola, contenido: contenido.substring(0, 160) });
+                return;
+            }
 
             saldoPrev = elegido.saldo;
 
@@ -190,13 +193,15 @@ export class ConciliacionService {
                 tipo
             );
 
-            filas.push({
-                fecha,
-                descripcion,
-                monto: elegido.monto,
-                saldo: elegido.saldo,
-                tipo: tipoDetectado,
-            });
+            if (![500, 80].includes(Math.round(elegido.monto * 100))) {
+                filas.push({
+                    fecha,
+                    descripcion,
+                    monto: elegido.monto,
+                    saldo: elegido.saldo,
+                    tipo: tipoDetectado,
+                });
+            }
 
         };
 
@@ -264,29 +269,33 @@ export class ConciliacionService {
         const hasta = fechas[fechas.length - 1];
         const mesConsulta = `${desde.substring(0, 7)}-01`;
 
-        const sistema: MovimientoSistema[] = await this.dataSource.query(
-            `
-            SELECT
-              id,
-              DATE_FORMAT(fecha_pago, '%Y-%m-%d') AS fecha,
-              concepto,
-              razon_social,
-              tipo_movimiento_id,
-              metodo_pago_id,
-              importe_sin_iva,
-              iva_acreditable,
-              importe_sin_iva AS monto,
-              (importe_sin_iva + COALESCE(iva_acreditable, 0)) AS monto_con_iva
-            FROM movimientos_financieros
-            WHERE tipo_movimiento_id IN (1, 2)
-              AND metodo_pago_id IN (2, 6)
-              AND fecha_pago >= ?
-              AND fecha_pago < DATE_ADD(?, INTERVAL 1 MONTH)
-            ORDER BY fecha_pago, id
-            `,
-            [mesConsulta, mesConsulta],
-        );
+        const sql = `
+    SELECT
+        id,
+        DATE_FORMAT(fecha_pago, '%Y-%m-%d') AS fecha,
+        concepto,
+        razon_social,
+        tipo_movimiento_id,
+        metodo_pago_id,
+        importe_sin_iva,
+        iva_acreditable,
+        importe_sin_iva AS monto,
+        (importe_sin_iva + COALESCE(iva_acreditable, 0)) AS monto_con_iva
+    FROM movimientos_financieros
+    WHERE tipo_movimiento_id IN (1, 2, 4)
+      AND metodo_pago_id IN (2, 6)
+      AND fecha_pago >= ?
+      AND fecha_pago < DATE_ADD(?, INTERVAL 1 MONTH)
+    ORDER BY fecha_pago, id
+`;
 
+        const params = [mesConsulta, mesConsulta];
+
+
+
+        const sistema: MovimientoSistema[] = await this.dataSource.query(sql, params);
+
+        //console.log(sistema)
 
         const money = (n: number | string) => Number(n).toFixed(2);
 
@@ -294,16 +303,19 @@ export class ConciliacionService {
             b.tipo === 'abono' ? 'ingreso' : 'egreso';
 
         const tipoSistema = (s: MovimientoSistema): 'ingreso' | 'egreso' =>
-            Number(s.tipo_movimiento_id) === 1 ? 'ingreso' : 'egreso';
+            [1, 4].includes(Number(s.tipo_movimiento_id))
+                ? 'ingreso'
+                : 'egreso';
 
-        const llave = (tipo: string, monto: string) => `${tipo}|${monto}`;
+        const llave = (tipo: string, fecha: string, monto: string) =>
+            `${tipo}|${fecha}|${monto}`;
 
         // Grupos basados en el importe del banco.
         const bancoMap = new Map<string, MovimientoBanco[]>();
         const sistemaMap = new Map<string, MovimientoSistema[]>();
 
         for (const b of banco) {
-            const k = llave(tipoBanco(b), money(b.monto));
+            const k = llave(tipoBanco(b), b.fecha, money(b.monto));
 
             if (!bancoMap.has(k)) bancoMap.set(k, []);
             bancoMap.get(k)!.push(b);
@@ -352,7 +364,7 @@ export class ConciliacionService {
 
                 if (mejorIndice === -1) continue;
 
-                const k = llave(tipoBanco(b), money(b.monto));
+                const k = llave(tipoBanco(b), b.fecha, money(b.monto));
 
                 if (!sistemaMap.has(k)) sistemaMap.set(k, []);
 
@@ -371,8 +383,8 @@ export class ConciliacionService {
             const s = sistema[j];
             const t = tipoSistema(s);
 
-            const sin = llave(t, money(s.monto));
-            const con = llave(t, money(s.monto_con_iva));
+            const sin = llave(t, s.fecha, money(s.monto));
+            const con = llave(t, s.fecha, money(s.monto_con_iva));
 
             const k = bancoMap.has(sin)
                 ? sin
@@ -392,7 +404,7 @@ export class ConciliacionService {
         const grupos = llaves
             .map(k => {
 
-                const [tipo, montoStr] = k.split('|');
+                const [tipo, fechaGrupo, montoStr] = k.split('|');
                 const monto = Number(montoStr);
 
                 const bs = (bancoMap.get(k) ?? [])
@@ -427,7 +439,7 @@ export class ConciliacionService {
                 ) / 100;
 
                 return {
-                    fecha: bs[0]?.fecha ?? ss[0]?.fecha ?? '',
+                    fecha: fechaGrupo,
                     tipo,
                     monto,
                     n_banco: nb,

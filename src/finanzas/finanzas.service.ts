@@ -113,7 +113,7 @@ FROM movimientos_financieros m
         ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
     `;
 
-        console.log('SQL findMovimientos:', sql);
+       // console.log('SQL findMovimientos:', sql);
 
         const result = await this.movimientoFinancieroRepo.query(sql);
         return result;
