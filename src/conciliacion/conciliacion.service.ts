@@ -68,6 +68,8 @@ export class ConciliacionService {
     // ============================================
     private parsear(texto: string): { filas: MovimientoBanco[]; saldoInicial: number | null } {
 
+
+
         const reFecha = /^(\d{1,2})-([A-Za-z]{3})-(\d{2})/;
         const reFin = /^(TOTAL|TOTALES|P[ÁA]GINA|SALDO PROMEDIO|SALDO FINAL|RESUMEN|CADENA ORIGINAL|SELLO|Línea Directa|Banco Mercantil)/i;
 
@@ -80,6 +82,7 @@ export class ConciliacionService {
         let inicio = texto.indexOf('DETALLE DE MOVIMIENTOS');
         if (inicio === -1) inicio = 0;
         const lineas = texto.substring(inicio).split('\n');
+
 
         const saldoIni = texto.match(/\(Saldo inicial de\s*\$?\s*([\d,]+\.\d{2})\)/i);
         const saldoInicial = saldoIni ? num(saldoIni[1]) : null;
@@ -123,15 +126,38 @@ export class ConciliacionService {
 
             const contenido = bloque.join(' ').replace(/\s+/g, ' ').trim();
 
+
+
+
+
+
             if (/SALDO ANTERIOR/i.test(contenido)) {
                 const ds = contenido.match(reDinero);
                 if (ds) saldoPrev = num(ds[ds.length - 1]);
                 return;
             }
 
-            const colaMatch = contenido.match(/[\d,]+\.\d{2}(?:[\d,]*\.\d{2})*\s*$/);
-            if (!colaMatch) return;
+
+
+            const contenidoLimpio = contenido.replace(
+                /\s+INVERSION ENLACE NEGOCIOS\s*$/i,
+                ''
+            );
+
+            const colaMatch = contenidoLimpio.match(
+                /[\d,]+\.\d{2}(?:[\d,]+\.\d{2})*$/
+            );
+
+            if (!colaMatch) {
+                console.warn('❌ FALLÓ colaMatch:', contenidoLimpio);
+                return;
+            }
+
             const cola = colaMatch[0].trim();
+
+
+
+
 
             let elegido: { monto: number; saldo: number; corte: number } | null = null;
             let tipo: 'cargo' | 'abono' | null = null;
@@ -151,8 +177,8 @@ export class ConciliacionService {
 
             saldoPrev = elegido.saldo;
 
-            const posCola = contenido.length - cola.length;
-            const descripcion = contenido
+            const posCola = contenidoLimpio.length - cola.length;
+            const descripcion = contenidoLimpio
                 .substring(f[0].length, posCola + elegido.corte)
                 .replace(/\s+/g, ' ')
                 .trim();
@@ -160,19 +186,15 @@ export class ConciliacionService {
             const tipoDetectado = this.detectarTipoMovimiento(descripcion, tipo);
 
             // Comisión SPEI ($5.00) e IVA ($0.80): se omiten
-            const esComisionSpei =
-                [500, 80].includes(Math.round(elegido.monto * 100)) &&
-                /TRANSFERENCIA - ENVIO|I\.V\.A\. ORDEN DE PAGO/i.test(descripcion);
-
-            if (!esComisionSpei) {
-                filas.push({
-                    fecha, descripcion,
-                    monto: elegido.monto,
-                    saldo: elegido.saldo,
-                    tipo: tipoDetectado,
-                });
-            }
+            filas.push({
+                fecha,
+                descripcion,
+                monto: elegido.monto,
+                saldo: elegido.saldo,
+                tipo: tipoDetectado,
+            });
         };
+
 
         for (const original of lineas) {
             const linea = original.trim();
@@ -181,14 +203,23 @@ export class ConciliacionService {
             if (reFecha.test(linea)) {
                 procesar();
                 bloque = [linea];
-            } else if (reFin.test(linea)) {
+
+            } else if (
+                reFin.test(linea) ||
+                /^FECHA\s*DESCRIPCI[ÓO]N/i.test(linea)
+            ) {
                 procesar();
                 bloque = [];
+
             } else if (bloque.length) {
                 bloque.push(linea);
             }
         }
+
+
         procesar();
+
+
 
         return { filas, saldoInicial };
     }
@@ -525,7 +556,12 @@ export class ConciliacionService {
     async conciliar(buffer: Buffer, nombreArchivo: string, reemplazar: boolean, usuario: string | null) {
 
         const pdf = await pdfParse(buffer);
-        const { filas, saldoInicial } = this.parsear(pdf.text);
+        const resultado = this.parsear(pdf.text);
+        const filas = this.agruparComisiones(resultado.filas);
+        const saldoInicial = resultado.saldoInicial;
+
+
+
 
         if (!filas.length) {
             throw new BadRequestException(
@@ -580,6 +616,8 @@ export class ConciliacionService {
                 );
             }
         });
+
+
 
         return this.cargar(anio, mes);
     }
@@ -681,6 +719,55 @@ export class ConciliacionService {
 
         return this.recargar(conciliacionId);
     }
+
+
+    private agruparComisiones(filas: MovimientoBanco[]): MovimientoBanco[] {
+        const patrones = [
+            /TRANSFERENCIA\s*-\s*ENVIO.*SPEI.*BANCA POR INTERNET/i,
+            /I\.?V\.?A\.?\s+ORDEN DE PAGO SPEI REFERENCIA/i,
+            /ADMINISTRACION\s*-\s*RENTA COMISION MEMBRESIA P\.?\s*MORAL/i,
+            /IVA COM MEMB P\.?M\.?\s*COMISION MEMBRESIA P\.?\s*MORAL/i,
+        ];
+
+        const comisiones = filas.filter(f =>
+            patrones.some(p => p.test(f.descripcion))
+        );
+
+        if (!comisiones.length) {
+            return filas;
+        }
+
+        // Todos los cargos de comisiones encontrados en el PDF.
+        const montoTotal = Number(
+            comisiones.reduce((total, f) => total + f.monto, 0).toFixed(2)
+        );
+
+        // Retiramos los movimientos individuales.
+        const restantes = filas.filter(f => !comisiones.includes(f));
+
+        // Usamos el último movimiento encontrado como referencia de fecha.
+        const ultimo = comisiones[comisiones.length - 1];
+
+        const agrupado: MovimientoBanco = {
+            fecha: ultimo.fecha,
+            descripcion: 'COMISIONES BANCARIAS E IVA DEL MES',
+            monto: montoTotal,
+            saldo: ultimo.saldo,
+            tipo: 'cargo',
+        };
+
+        // Insertamos el movimiento agrupado respetando el orden cronológico.
+        restantes.push(agrupado);
+        restantes.sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+        console.log('===== COMISIONES AGRUPADAS =====');
+        console.log('Movimientos agrupados:', comisiones.length);
+        console.log('Importe total:', montoTotal);
+        console.log('================================');
+
+        return restantes;
+    }
+
 
     async quitarUnion(grupoId: number, usuario: string | null) {
 
