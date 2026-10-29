@@ -130,12 +130,52 @@ export class ConciliacionService {
 
 
 
-
             if (/SALDO ANTERIOR/i.test(contenido)) {
                 const ds = contenido.match(reDinero);
                 if (ds) saldoPrev = num(ds[ds.length - 1]);
                 return;
             }
+
+            // ===== DEVOLUCIÓN SPEI =====
+            if (/DEV\.SPEI/i.test(contenido)) {
+                const devolucion = contenido.match(
+                    /([\d,]+\.\d{2})-([\d,]+\.\d{2})\s*$/
+                );
+
+                if (devolucion && saldoPrev !== null) {
+                    const monto = num(devolucion[1]);
+                    const saldo = num(devolucion[2]);
+
+                    if (Math.abs(saldoPrev + monto - saldo) <= 0.02) {
+                        const descripcion = contenido
+                            .substring(f[0].length)
+                            .replace(/[\d,]+\.\d{2}-[\d,]+\.\d{2}\s*$/, '')
+                            .trim();
+
+                        filas.push({
+                            fecha,
+                            descripcion,
+                            monto,
+                            saldo,
+                            tipo: 'abono',
+                        });
+
+
+                        saldoPrev = saldo;
+                        return;
+                    }
+                }
+
+                console.warn('⚠️ NO SE PUDO PROCESAR DEVOLUCIÓN SPEI:', {
+                    contenido,
+                    saldoPrev,
+                    devolucion,
+                });
+
+                return;
+            }
+
+
 
 
 
@@ -145,7 +185,7 @@ export class ConciliacionService {
             );
 
             const colaMatch = contenidoLimpio.match(
-                /[\d,]+\.\d{2}(?:[\d,]+\.\d{2})*$/
+                /[\d,]+\.\d{2}(?:-?[\d,]+\.\d{2})*$/
             );
 
             if (!colaMatch) {
@@ -170,8 +210,16 @@ export class ConciliacionService {
                 }
             }
 
+
+
             if (!elegido) {
-                console.warn('⚠️ NO CUADRÓ:', { fecha, saldoPrev, cola, contenido: contenido.substring(0, 160) });
+                console.warn('⚠️ NO CUADRÓ:', {
+                    fecha,
+                    saldoPrev,
+                    cola,
+                    candidatos: candidatos(cola),
+                    contenido: contenido.substring(0, 200),
+                });
                 return;
             }
 
@@ -278,7 +326,7 @@ export class ConciliacionService {
             [mesConsulta, mesConsulta],
         );
 
-        const money = (n: number | string) => Number(n).toFixed(2);
+
 
         const tipoBanco = (b: MovimientoBanco): 'ingreso' | 'egreso' =>
             b.tipo === 'abono' ? 'ingreso' : 'egreso';
@@ -352,7 +400,9 @@ export class ConciliacionService {
                 creado_por: g.creado_por,
                 fecha: bs.length ? bs.map(b => b.fecha).sort()[0] : desde,
                 tipo: bs.length ? tipoBanco(bs[0]) : 'egreso',
-                monto: Number(sumaBanco.toFixed(2)),
+                monto: bs.length
+    ? Number((sumaBanco / bs.length).toFixed(2))
+    : Number(sumaSistema.toFixed(2)),
                 n_banco: bs.length,
                 n_sistema: ss.length,
                 suma_banco: Number(sumaBanco.toFixed(2)),
@@ -370,123 +420,178 @@ export class ConciliacionService {
         const banco = bancoTodo.filter(b => !usadosB.has(b.id!));
         const sistema = sistemaTodo.filter(s => !usadosS.has(Number(s.id)));
 
-        // ===== Emparejamiento automático =====
-        const llave = (tipo: string, fecha: string, monto: string) => `${tipo}|${fecha}|${monto}`;
 
-        const bancoMap = new Map<string, MovimientoBanco[]>();
-        const sistemaMap = new Map<string, MovimientoSistema[]>();
+        // ===== Emparejamiento automático seguro =====
+        // Solo conciliamos automáticamente cuando la coincidencia es única.
+        // Si varios movimientos pueden corresponder al mismo registro,
+        // todos quedan pendientes para que el usuario decida manualmente.
 
-        for (const b of banco) {
-            const k = llave(tipoBanco(b), b.fecha, money(b.monto));
-            if (!bancoMap.has(k)) bancoMap.set(k, []);
-            bancoMap.get(k)!.push(b);
-        }
+        const automaticos: any[] = [];
 
-        const sistemaUsados = new Set<number>();
-        const bancoUsados = new Set<number>();
+        const bancosPendientes = new Set<number>(
+            banco.map((_, i) => i)
+        );
+
+        const sistemasPendientes = new Set<number>(
+            sistema.map((_, i) => i)
+        );
+
+        const parejas: {
+            bancoIndex: number;
+            sistemaIndex: number;
+        }[] = [];
 
         for (const tolerancia of [0, 5]) {
+            const candidatosBanco = new Map<number, number[]>();
+            const candidatosSistema = new Map<number, number[]>();
 
-            for (let i = 0; i < banco.length; i++) {
-
-                if (bancoUsados.has(i)) continue;
+            // Buscar candidatos para cada movimiento bancario.
+            for (const i of bancosPendientes) {
                 const b = banco[i];
+                const posibles: number[] = [];
 
-                let mejorIndice = -1;
-                let mejorPuntaje = Infinity;
-
-                for (let j = 0; j < sistema.length; j++) {
-
-                    if (sistemaUsados.has(j)) continue;
+                for (const j of sistemasPendientes) {
                     const s = sistema[j];
 
                     if (tipoBanco(b) !== tipoSistema(s)) continue;
-                    if (!this.coincideImporte(b, s, tolerancia)) continue;
 
-                    const montoBanco = Math.round(Number(b.monto) * 100);
-                    const montoSinIva = Math.round(Number(s.monto) * 100);
-                    const montoConIva = Math.round(Number(s.monto_con_iva) * 100);
-
-                    const diferencia = Math.min(
-                        Math.abs(montoBanco - montoSinIva),
-                        Math.abs(montoBanco - montoConIva)
-                    );
-
-                    const dias = Math.abs(Date.parse(s.fecha) - Date.parse(b.fecha)) / 86400000;
-                    const puntaje = diferencia * 1000 + dias;
-
-                    if (puntaje < mejorPuntaje) {
-                        mejorPuntaje = puntaje;
-                        mejorIndice = j;
+                    if (!this.coincideImporte(b, s, tolerancia)) {
+                        continue;
                     }
+
+                    posibles.push(j);
+
+                    if (!candidatosSistema.has(j)) {
+                        candidatosSistema.set(j, []);
+                    }
+
+                    candidatosSistema.get(j)!.push(i);
                 }
 
-                if (mejorIndice === -1) continue;
+                candidatosBanco.set(i, posibles);
+            }
 
-                const k = llave(tipoBanco(b), b.fecha, money(b.monto));
-                if (!sistemaMap.has(k)) sistemaMap.set(k, []);
-                sistemaMap.get(k)!.push(sistema[mejorIndice]);
+            // Solo aceptar coincidencias únicas en ambos sentidos.
+            const nuevasParejas: {
+                bancoIndex: number;
+                sistemaIndex: number;
+            }[] = [];
 
-                bancoUsados.add(i);
-                sistemaUsados.add(mejorIndice);
+            for (const [i, posibles] of candidatosBanco) {
+                if (posibles.length !== 1) continue;
+
+                const j = posibles[0];
+                const posiblesBancos = candidatosSistema.get(j) ?? [];
+
+                if (posiblesBancos.length !== 1) continue;
+
+                nuevasParejas.push({
+                    bancoIndex: i,
+                    sistemaIndex: j,
+                });
+            }
+
+            // Reservar las parejas encontradas.
+            for (const pareja of nuevasParejas) {
+                if (
+                    !bancosPendientes.has(pareja.bancoIndex) ||
+                    !sistemasPendientes.has(pareja.sistemaIndex)
+                ) {
+                    continue;
+                }
+
+                parejas.push(pareja);
+                bancosPendientes.delete(pareja.bancoIndex);
+                sistemasPendientes.delete(pareja.sistemaIndex);
             }
         }
 
-        for (let j = 0; j < sistema.length; j++) {
-            if (sistemaUsados.has(j)) continue;
+        // Crear grupos conciliados automáticamente.
+        for (const pareja of parejas) {
+            const b = banco[pareja.bancoIndex];
+            const s = sistema[pareja.sistemaIndex];
 
-            const s = sistema[j];
-            const t = tipoSistema(s);
-            const sin = llave(t, s.fecha, money(s.monto));
-            const con = llave(t, s.fecha, money(s.monto_con_iva));
-            const k = bancoMap.has(sin) ? sin : bancoMap.has(con) ? con : sin;
+            const montoBanco = Math.round(Number(b.monto) * 100);
+            const montoSinIva = Math.round(Number(s.monto) * 100);
+            const montoConIva = Math.round(Number(s.monto_con_iva) * 100);
 
-            if (!sistemaMap.has(k)) sistemaMap.set(k, []);
-            sistemaMap.get(k)!.push(s);
+            const diferenciaCentavos = Math.min(
+                Math.abs(montoBanco - montoSinIva),
+                Math.abs(montoBanco - montoConIva)
+            );
+
+            const montoSistema =
+                Math.abs(montoBanco - montoSinIva) <=
+                    Math.abs(montoBanco - montoConIva)
+                    ? Number(s.monto)
+                    : Number(s.monto_con_iva);
+
+            automaticos.push({
+                manual: false,
+                fecha: b.fecha,
+                tipo: tipoBanco(b),
+                monto: Number(b.monto),
+                n_banco: 1,
+                n_sistema: 1,
+                suma_banco: Number(Number(b.monto).toFixed(2)),
+                suma_sistema: Number(montoSistema.toFixed(2)),
+                estado: 'ok',
+                diferencia: 0,
+                diferencia_importe: Number(
+                    (diferenciaCentavos / 100).toFixed(2)
+                ),
+                tolerancia: diferenciaCentavos > 0,
+                banco: [b],
+                sistema: [s],
+            });
         }
 
-        const llaves = Array.from(new Set([
-            ...Array.from(bancoMap.keys()),
-            ...Array.from(sistemaMap.keys()),
-        ]));
+        // Cada movimiento bancario ambiguo o sin coincidencia
+        // queda en su propio grupo pendiente.
+        for (const i of bancosPendientes) {
+            const b = banco[i];
 
-        const automaticos = llaves.map(k => {
-            const [tipo, fechaGrupo, montoStr] = k.split('|');
-            const monto = Number(montoStr);
-
-            const bs = (bancoMap.get(k) ?? []).sort((a, b) => a.fecha.localeCompare(b.fecha));
-            const ss = (sistemaMap.get(k) ?? []).sort((a, b) => a.fecha.localeCompare(b.fecha));
-
-            const nb = bs.length;
-            const ns = ss.length;
-
-            const sumaBanco = bs.reduce((t, b) => t + Number(b.monto), 0);
-            const sumaSistema = ss.reduce((t, s) => {
-                const sin = Number(s.monto);
-                const con = Number(s.monto_con_iva);
-                return t + (Math.abs(sin - monto) <= Math.abs(con - monto) ? sin : con);
-            }, 0);
-
-            const diferenciaImporte =
-                Math.abs(Math.round(sumaBanco * 100) - Math.round(sumaSistema * 100)) / 100;
-
-            return {
+            automaticos.push({
                 manual: false,
-                fecha: fechaGrupo,
-                tipo,
+                fecha: b.fecha,
+                tipo: tipoBanco(b),
+                monto: Number(b.monto),
+                n_banco: 1,
+                n_sistema: 0,
+                suma_banco: Number(Number(b.monto).toFixed(2)),
+                suma_sistema: 0,
+                estado: 'falta_sistema',
+                diferencia: 1,
+                diferencia_importe: Number(Number(b.monto).toFixed(2)),
+                tolerancia: false,
+                banco: [b],
+                sistema: [],
+            });
+        }
+
+        // Cada movimiento del sistema sin pareja confirmada
+        // queda separado, incluso si existe un importe igual en el banco.
+        for (const j of sistemasPendientes) {
+            const s = sistema[j];
+            const monto = Number(s.monto);
+
+            automaticos.push({
+                manual: false,
+                fecha: s.fecha,
+                tipo: tipoSistema(s),
                 monto,
-                n_banco: nb,
-                n_sistema: ns,
-                suma_banco: Number(sumaBanco.toFixed(2)),
-                suma_sistema: Number(sumaSistema.toFixed(2)),
-                estado: nb === ns ? 'ok' : nb > ns ? 'falta_sistema' : 'sobran_sistema',
-                diferencia: Math.abs(nb - ns),
-                diferencia_importe: Number(diferenciaImporte.toFixed(2)),
-                tolerancia: nb === ns && diferenciaImporte > 0,
-                banco: bs,
-                sistema: ss,
-            };
-        });
+                n_banco: 0,
+                n_sistema: 1,
+                suma_banco: 0,
+                suma_sistema: Number(monto.toFixed(2)),
+                estado: 'sobran_sistema',
+                diferencia: 1,
+                diferencia_importe: Number(monto.toFixed(2)),
+                tolerancia: false,
+                banco: [],
+                sistema: [s],
+            });
+        }
 
         const grupos: any[] = [...automaticos, ...manuales]
             .sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -727,6 +832,8 @@ export class ConciliacionService {
             /I\.?V\.?A\.?\s+ORDEN DE PAGO SPEI REFERENCIA/i,
             /ADMINISTRACION\s*-\s*RENTA COMISION MEMBRESIA P\.?\s*MORAL/i,
             /IVA COM MEMB P\.?M\.?\s*COMISION MEMBRESIA P\.?\s*MORAL/i,
+            /EMISION DE CHEQUERA/i,
+            /EXCEDIDAS A MEMBRESIA/i,
         ];
 
         const comisiones = filas.filter(f =>
@@ -760,10 +867,7 @@ export class ConciliacionService {
         restantes.push(agrupado);
         restantes.sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-        console.log('===== COMISIONES AGRUPADAS =====');
-        console.log('Movimientos agrupados:', comisiones.length);
-        console.log('Importe total:', montoTotal);
-        console.log('================================');
+
 
         return restantes;
     }
