@@ -63,4 +63,17 @@ export class Maquinaria {
   // Datos para pagos de maquinaria
   @Column({ type: 'varchar', length: 100, nullable: true })
   numero_de_contrato: string | null;
+
+  // Póliza de seguro del activo
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  aseguradora: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  numero_poliza: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  fecha_inicio_poliza: Date | null;
+
+  @Column({ type: 'date', nullable: true })
+  fecha_fin_poliza: Date | null;
 }

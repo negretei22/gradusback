@@ -69,6 +69,8 @@ export class MaquinariaService {
     async saveMaquinaria(payload: any) {
         `
         payload.numero_de_contrato = (payload.numero_de_contrato || '').trim() || null;`
+        if (payload.fecha_inicio_poliza === '') payload.fecha_inicio_poliza = null;
+        if (payload.fecha_fin_poliza === '') payload.fecha_fin_poliza = null;
         //  console.log(payload)
         const existe = await this.maquinariaRepo.findOne({
             where: { numero_serie: payload.numero_serie }
@@ -90,6 +92,9 @@ export class MaquinariaService {
         if ('numero_de_contrato' in data) {
             data.numero_de_contrato = (data.numero_de_contrato || '').trim() || null;
         }
+
+        if (data.fecha_inicio_poliza === '') data.fecha_inicio_poliza = null;
+        if (data.fecha_fin_poliza === '') data.fecha_fin_poliza = null;
 
         const maquinaria = await this.maquinariaRepo.findOne({
             where: { id_maquinaria }
