@@ -29,10 +29,12 @@ export class MaquinariaService {
         return this.maquinariaRepo
             .createQueryBuilder('a')
             .leftJoin('marcas', 'b', 'a.id_marca = b.id_marca')
+            .leftJoin('modelos', 'm', 'a.id_modelo = m.id_modelo')
 
             .select([
                 'a.*',
                 'b.marca', // cambia nombre por tu campo real
+                'm.modelo',
 
                 `CASE 
         WHEN a.id_tipo_de_adquisicion = 1 THEN 'PROPIO'
@@ -187,6 +189,7 @@ export class MaquinariaService {
         if ('fecha_inicio_poliza' in data) cambios.fecha_inicio_poliza = data.fecha_inicio_poliza;
         if ('fecha_fin_poliza' in data) cambios.fecha_fin_poliza = data.fecha_fin_poliza;
         if ('documento_poliza' in data) cambios.documento_poliza = data.documento_poliza;
+        if ('costo_poliza' in data) cambios.costo_poliza = (data.costo_poliza || '').trim() || null;
 
         this.maquinariaRepo.merge(maquinaria, cambios);
         return await this.maquinariaRepo.save(maquinaria);

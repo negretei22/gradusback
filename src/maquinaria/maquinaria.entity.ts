@@ -27,6 +27,9 @@ export class Maquinaria {
   @Column({ type: 'text' })
   descripcion: number;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  nombre: string | null;
+
   @Column({ type: 'text', nullable: true })
   documentos: string;
 
@@ -76,6 +79,10 @@ export class Maquinaria {
 
   @Column({ type: 'date', nullable: true })
   fecha_fin_poliza: Date | null;
+
+  // Costo de la póliza (texto: puede ser monto, "Financiado en letra", "Gratis 1er. año", etc.)
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  costo_poliza: string | null;
 
   // PDF de la póliza de seguro (nombre del archivo en uploads/activos/<numero_serie>/)
   @Column({ type: 'varchar', length: 255, nullable: true })
