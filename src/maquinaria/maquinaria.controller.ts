@@ -4,7 +4,7 @@ import { Marcas } from './marcas.entity';
 import { Modelos } from './modelos.entity';
 import { ArrendadoresMaquinaria } from './arrendadores_maquinaria.entity';
 import { UseInterceptors, UploadedFiles } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as fs from 'fs';
 
@@ -57,24 +57,30 @@ export class MaquinariaController {
 
 
   @Post('save')
-  @UseInterceptors(FilesInterceptor('archivo_documento', 10, { storage: storageMaquinaria }))
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'archivo_documento', maxCount: 10 },
+    { name: 'archivo_poliza', maxCount: 1 },
+  ], { storage: storageMaquinaria }))
   async guardaPartida(
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files: { archivo_documento?: Express.Multer.File[]; archivo_poliza?: Express.Multer.File[] },
     @Body() payload: any
   ) {
-    if (files && files.length) {
-      payload.documentos = JSON.stringify(files.map(f => f.filename));
-    } else {
-      payload.documentos = JSON.stringify([]);
+    const docs = files?.archivo_documento ?? [];
+    payload.documentos = JSON.stringify(docs.map(f => f.filename));
+    if (files?.archivo_poliza?.length) {
+      payload.documento_poliza = files.archivo_poliza[0].filename;
     }
     console.log(payload);
     return await this.maquinariaService.saveMaquinaria(payload);
   }
 
   @Put('update')
-  @UseInterceptors(FilesInterceptor('archivo_documento', 10, { storage: storageMaquinaria }))
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'archivo_documento', maxCount: 10 },
+    { name: 'archivo_poliza', maxCount: 1 },
+  ], { storage: storageMaquinaria }))
   async actualizaPartida(
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files: { archivo_documento?: Express.Multer.File[]; archivo_poliza?: Express.Multer.File[] },
     @Body() payload: any
   ) {
     // payload.documentos llega como JSON string desde el frontend (los que ya existían y no se quitaron)
@@ -85,9 +91,14 @@ export class MaquinariaController {
       documentosExistentes = [];
     }
 
-    const nuevos = files && files.length ? files.map(f => f.filename) : [];
+    const nuevos = files?.archivo_documento?.map(f => f.filename) ?? [];
 
     payload.documentos = JSON.stringify([...documentosExistentes, ...nuevos]);
+
+    // PDF nuevo de póliza: reemplaza al anterior (el servicio borra el viejo)
+    if (files?.archivo_poliza?.length) {
+      payload.documento_poliza = files.archivo_poliza[0].filename;
+    }
 
     console.log('PAYLOAD FINAL:', payload);
     return await this.maquinariaService.updateMaquinaria(payload);

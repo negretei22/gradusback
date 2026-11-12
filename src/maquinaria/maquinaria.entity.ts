@@ -76,4 +76,8 @@ export class Maquinaria {
 
   @Column({ type: 'date', nullable: true })
   fecha_fin_poliza: Date | null;
+
+  // PDF de la póliza de seguro (nombre del archivo en uploads/activos/<numero_serie>/)
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  documento_poliza: string | null;
 }
