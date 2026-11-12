@@ -166,11 +166,11 @@ export class ConciliacionService {
                     }
                 }
 
-                console.warn('⚠️ NO SE PUDO PROCESAR DEVOLUCIÓN SPEI:', {
+                /*console.warn('⚠️ NO SE PUDO PROCESAR DEVOLUCIÓN SPEI:', {
                     contenido,
                     saldoPrev,
                     devolucion,
-                });
+                });*/
 
                 return;
             }
@@ -185,7 +185,7 @@ export class ConciliacionService {
             );
 
             const colaMatch = contenidoLimpio.match(
-                /[\d,]+\.\d{2}(?:-?[\d,]+\.\d{2})*$/
+                /[\d,]+\.\d{2}(?:[\s-]*[\d,]+\.\d{2})*$/
             );
 
             if (!colaMatch) {
@@ -193,7 +193,8 @@ export class ConciliacionService {
                 return;
             }
 
-            const cola = colaMatch[0].trim();
+            const colaBruta = colaMatch[0].trim();
+            const cola = colaBruta.replace(/[\s-]/g, '');   // "1,181,250.001,253,236.56"
 
 
 
@@ -213,19 +214,22 @@ export class ConciliacionService {
 
 
             if (!elegido) {
-                console.warn('⚠️ NO CUADRÓ:', {
-                    fecha,
-                    saldoPrev,
-                    cola,
-                    candidatos: candidatos(cola),
-                    contenido: contenido.substring(0, 200),
-                });
+                /* console.warn('⚠️ NO CUADRÓ:', {
+                     fecha,
+                     saldoPrev,
+                     cola,
+                     candidatos: candidatos(cola),
+                     contenido: contenido.substring(0, 200),
+                 });*/
+
+                const m = cola.match(/(\d{1,3}(?:,\d{3})*\.\d{2})$/);
+                if (m) saldoPrev = num(m[1]);
                 return;
             }
 
             saldoPrev = elegido.saldo;
 
-            const posCola = contenidoLimpio.length - cola.length;
+            const posCola = contenidoLimpio.length - colaBruta.length;
             const descripcion = contenidoLimpio
                 .substring(f[0].length, posCola + elegido.corte)
                 .replace(/\s+/g, ' ')
@@ -401,8 +405,8 @@ export class ConciliacionService {
                 fecha: bs.length ? bs.map(b => b.fecha).sort()[0] : desde,
                 tipo: bs.length ? tipoBanco(bs[0]) : 'egreso',
                 monto: bs.length
-    ? Number((sumaBanco / bs.length).toFixed(2))
-    : Number(sumaSistema.toFixed(2)),
+                    ? Number((sumaBanco / bs.length).toFixed(2))
+                    : Number(sumaSistema.toFixed(2)),
                 n_banco: bs.length,
                 n_sistema: ss.length,
                 suma_banco: Number(sumaBanco.toFixed(2)),
@@ -591,6 +595,17 @@ export class ConciliacionService {
                 banco: [],
                 sistema: [s],
             });
+        }
+
+        for (const g of automaticos) {
+            if (g.estado === 'ok') continue;
+
+            const hayNota = [...g.banco, ...g.sistema].some(x => x.notas?.length);
+            if (hayNota) {
+                g.estado_original = g.estado;   // 'falta_sistema' | 'sobran_sistema'
+                g.por_comentario = true;        // para distinguirlo en pantalla
+                g.estado = 'ok';
+            }
         }
 
         const grupos: any[] = [...automaticos, ...manuales]
@@ -829,11 +844,14 @@ export class ConciliacionService {
     private agruparComisiones(filas: MovimientoBanco[]): MovimientoBanco[] {
         const patrones = [
             /TRANSFERENCIA\s*-\s*ENVIO.*SPEI.*BANCA POR INTERNET/i,
-            /I\.?V\.?A\.?\s+ORDEN DE PAGO SPEI REFERENCIA/i,
+            /^(I\.?V\.?A\.?\s+ORDEN DE PAGO SPEI|TRANSFERENCIA\s*-\s*ENVIO.*SPEI)/i,
             /ADMINISTRACION\s*-\s*RENTA COMISION MEMBRESIA P\.?\s*MORAL/i,
             /IVA COM MEMB P\.?M\.?\s*COMISION MEMBRESIA P\.?\s*MORAL/i,
             /EMISION DE CHEQUERA/i,
             /EXCEDIDAS A MEMBRESIA/i,
+            /IVA COMISION CHEQUE/i,      // nuevo
+            /ANUL\.COM\.CHQ/i,           // nuevo
+            /ANUL\.IVA COMISION/i,       // nuevo
         ];
 
         const comisiones = filas.filter(f =>
@@ -846,7 +864,9 @@ export class ConciliacionService {
 
         // Todos los cargos de comisiones encontrados en el PDF.
         const montoTotal = Number(
-            comisiones.reduce((total, f) => total + f.monto, 0).toFixed(2)
+            comisiones.reduce(
+                (t, f) => t + (f.tipo === 'abono' ? -f.monto : f.monto), 0
+            ).toFixed(2)
         );
 
         // Retiramos los movimientos individuales.

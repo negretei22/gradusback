@@ -67,13 +67,15 @@ export class MaquinariaService {
     }
 
     async saveMaquinaria(payload: any) {
-        console.log(payload)
+        `
+        payload.numero_de_contrato = (payload.numero_de_contrato || '').trim() || null;`
+        //  console.log(payload)
         const existe = await this.maquinariaRepo.findOne({
             where: { numero_serie: payload.numero_serie }
         });
 
         if (existe) {
-            throw new ConflictException({ message: 'Contrato duplicado', numero_contrato: payload.numero_contrato });
+            throw new ConflictException({ message: 'Número de serie duplicado', numero_serie: payload.numero_serie });
         }
 
         const contrato = this.maquinariaRepo.create(payload);
@@ -84,6 +86,10 @@ export class MaquinariaService {
         console.log(payload);
 
         const { id_maquinaria, ...data } = payload;
+
+        if ('numero_de_contrato' in data) {
+            data.numero_de_contrato = (data.numero_de_contrato || '').trim() || null;
+        }
 
         const maquinaria = await this.maquinariaRepo.findOne({
             where: { id_maquinaria }

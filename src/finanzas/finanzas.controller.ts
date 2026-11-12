@@ -105,6 +105,21 @@ export class FinanzasController {
     return this.finanzasService.getMovimiento(id);
   }
 
+  @Get('activos/buscar')
+  buscarActivos(@Query('texto') texto: string) {
+    return this.finanzasService.buscarActivos(texto);
+  }
+
+  @Get('activos/:id')
+  getActivo(@Param('id') id: string) {
+    return this.finanzasService.getActivo(Number(id));
+  }
+
+  @Get('activos/:id/pagos')
+  getPagosActivo(@Param('id') id: string) {
+    return this.finanzasService.getPagosActivo(Number(id));
+  }
+
   // ========== ESCRITURA ==========
   @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
 

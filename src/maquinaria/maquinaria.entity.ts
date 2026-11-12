@@ -59,4 +59,8 @@ export class Maquinaria {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
   updated_at: Date;
+
+  // Datos para pagos de maquinaria
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  numero_de_contrato: string | null;
 }

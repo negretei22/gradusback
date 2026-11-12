@@ -113,7 +113,7 @@ FROM movimientos_financieros m
         ORDER BY m.orden, m.fecha_pago, m.fecha_pago ASC
     `;
 
-       // console.log('SQL findMovimientos:', sql);
+        // console.log('SQL findMovimientos:', sql);
 
         const result = await this.movimientoFinancieroRepo.query(sql);
         return result;
@@ -540,5 +540,61 @@ FROM movimientos_financieros m
         await this.guardarPagos(id, pagos);
 
         return { ok: true };
+    }
+
+    private readonly SQL_ACTIVO = `
+  SELECT a.id_maquinaria, a.numero_activo, a.numero_serie, a.descripcion,
+         a.numero_de_contrato, a.plazo, a.id_tipo_de_adquisicion, b.marca,
+         CASE a.id_tipo_de_adquisicion
+           WHEN 1 THEN 'PROPIO' WHEN 2 THEN 'LEASING' WHEN 3 THEN 'ARRENDADA'
+           ELSE 'DESCONOCIDO' END AS tipo_adquisicion,
+         (SELECT COALESCE(MAX(m.numero_pago), 0) + 1
+            FROM movimientos_financieros m
+           WHERE m.activo_maquinaria_id = a.id_maquinaria) AS siguiente_pago
+  FROM maquinaria a
+  LEFT JOIN marcas b ON a.id_marca = b.id_marca
+`;
+
+    async buscarActivos(texto: string) {
+        const like = `%${(texto || '').trim()}%`;
+        return this.movimientoFinancieroRepo.query(
+            `${this.SQL_ACTIVO}
+     WHERE a.descripcion LIKE ? OR a.numero_serie LIKE ? OR a.numero_de_contrato LIKE ?
+        OR b.marca LIKE ? OR CAST(a.numero_activo AS CHAR) LIKE ?
+     ORDER BY a.numero_activo LIMIT 15`,
+            [like, like, like, like, like],
+        );
+    }
+
+    async getActivo(id: number) {
+        const r = await this.movimientoFinancieroRepo.query(
+            `${this.SQL_ACTIVO} WHERE a.id_maquinaria = ?`, [id],
+        );
+        return r[0] ?? null;
+    }
+
+async getPagosActivo(id: number) {
+  return this.movimientoFinancieroRepo.query(
+    `SELECT m.id, m.numero_pago,
+            DATE_FORMAT(m.fecha_pago, '%Y-%m-%d') AS fecha_pago,
+            m.concepto, m.importe_sin_iva,
+            m.archivo_factura, m.archivo_pago,
+            mp.nombre AS metodo_pago
+       FROM movimientos_financieros m
+       LEFT JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+      WHERE m.activo_maquinaria_id = ?
+      ORDER BY m.numero_pago DESC, m.fecha_pago DESC`,
+    [id],
+  );
+}
+
+    // FormData manda '' cuando no hay valor; la BD necesita NULL.
+    // Solo se conserva el activo si es Egreso (2) + Maquinaria (19).
+    private normalizarActivo(payload: any) {
+        const aplica = Number(payload.tipo_movimiento_id) === 2 && Number(payload.categoria_id) === 19;
+        const activoId = Number(payload.activo_maquinaria_id);
+        const nPago = Number(payload.numero_pago);
+        payload.activo_maquinaria_id = aplica && activoId > 0 ? activoId : null;
+        payload.numero_pago = payload.activo_maquinaria_id && nPago > 0 ? nPago : null;
     }
 }

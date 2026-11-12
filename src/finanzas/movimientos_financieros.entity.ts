@@ -1,3 +1,4 @@
+
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -30,7 +31,6 @@ export class MovimientoFinanciero {
   @Column({ type: 'varchar', length: 100, nullable: true })
   folio_complemento_fiscal: string;
 
-
   @Column({ type: 'text', nullable: true })
   rfc: string;
 
@@ -44,7 +44,7 @@ export class MovimientoFinanciero {
   importe_sin_iva: number;
 
   @Column({ type: 'tinyint', default: 0 })
-  iva: number; // 0,8,16
+  iva: number; // 0, 8, 16
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   iva_acreditable: number;
@@ -93,4 +93,10 @@ export class MovimientoFinanciero {
 
   @Column({ type: 'tinyint', default: 0 })
   pago_dividido: number;
+
+  @Column({ type: 'int', nullable: true })
+  activo_maquinaria_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  numero_pago: number | null;
 }
