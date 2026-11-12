@@ -67,8 +67,7 @@ export class MaquinariaService {
     }
 
     async saveMaquinaria(payload: any) {
-        `
-        payload.numero_de_contrato = (payload.numero_de_contrato || '').trim() || null;`
+        payload.numero_de_contrato = (payload.numero_de_contrato || '').trim() || null;
         if (payload.fecha_inicio_poliza === '') payload.fecha_inicio_poliza = null;
         if (payload.fecha_fin_poliza === '') payload.fecha_fin_poliza = null;
         if (payload.documento_poliza === '') payload.documento_poliza = null;
