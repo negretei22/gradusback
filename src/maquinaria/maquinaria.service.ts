@@ -69,6 +69,9 @@ export class MaquinariaService {
     async saveMaquinaria(payload: any) {
         `
         payload.numero_de_contrato = (payload.numero_de_contrato || '').trim() || null;`
+        if (payload.fecha_inicio_poliza === '') payload.fecha_inicio_poliza = null;
+        if (payload.fecha_fin_poliza === '') payload.fecha_fin_poliza = null;
+        if (payload.documento_poliza === '') payload.documento_poliza = null;
         //  console.log(payload)
         const existe = await this.maquinariaRepo.findOne({
             where: { numero_serie: payload.numero_serie }
@@ -91,12 +94,30 @@ export class MaquinariaService {
             data.numero_de_contrato = (data.numero_de_contrato || '').trim() || null;
         }
 
+        if (data.fecha_inicio_poliza === '') data.fecha_inicio_poliza = null;
+        if (data.fecha_fin_poliza === '') data.fecha_fin_poliza = null;
+        if (data.documento_poliza === '') data.documento_poliza = null;
+
         const maquinaria = await this.maquinariaRepo.findOne({
             where: { id_maquinaria }
         });
 
         if (!maquinaria) {
             throw new NotFoundException({ message: 'Maquinaria no encontrada' });
+        }
+
+        // ===== ELIMINAR PDF DE PÓLIZA VIEJO SI SE REEMPLAZÓ O SE QUITÓ =====
+        if ('documento_poliza' in data && maquinaria.documento_poliza && data.documento_poliza !== maquinaria.documento_poliza) {
+            // El PDF viejo vive en la carpeta del número de serie anterior
+            const rutaPolizaVieja = join(process.cwd(), 'uploads', 'activos', maquinaria.numero_serie, maquinaria.documento_poliza);
+            try {
+                if (fs.existsSync(rutaPolizaVieja)) {
+                    fs.unlinkSync(rutaPolizaVieja);
+                    console.log('PDF de póliza viejo eliminado:', rutaPolizaVieja);
+                }
+            } catch (err) {
+                console.error(`Error eliminando PDF de póliza ${maquinaria.documento_poliza}:`, err);
+            }
         }
 
         if (data.numero_serie && data.numero_serie !== maquinaria.numero_serie) {
@@ -143,6 +164,18 @@ export class MaquinariaService {
         }
 
         const nombresArchivos = this.parseDocumentos(maquinaria.documentos);
+
+        if (maquinaria.documento_poliza) {
+            const rutaPoliza = join(process.cwd(), 'uploads', 'activos', maquinaria.numero_serie, maquinaria.documento_poliza);
+            try {
+                if (fs.existsSync(rutaPoliza)) {
+                    fs.unlinkSync(rutaPoliza);
+                    console.log('PDF de póliza eliminado:', rutaPoliza);
+                }
+            } catch (err) {
+                console.error(`Error eliminando PDF de póliza ${maquinaria.documento_poliza}:`, err);
+            }
+        }
 
         for (const nombre of nombresArchivos) {
             const rutaArchivo = join(process.cwd(), 'uploads', 'activos', maquinaria.numero_serie, nombre);
