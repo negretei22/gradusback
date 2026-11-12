@@ -152,6 +152,47 @@ export class MaquinariaService {
         return await this.maquinariaRepo.save(maquinaria);
     }
 
+    // ===== PÓLIZA DE SEGURO (solo actualiza los datos de la póliza) =====
+    async updatePoliza(payload: any) {
+        const { id_maquinaria, ...data } = payload;
+
+        if (data.fecha_inicio_poliza === '') data.fecha_inicio_poliza = null;
+        if (data.fecha_fin_poliza === '') data.fecha_fin_poliza = null;
+        if (data.documento_poliza === '') data.documento_poliza = null;
+
+        const maquinaria = await this.maquinariaRepo.findOne({
+            where: { id_maquinaria }
+        });
+
+        if (!maquinaria) {
+            throw new NotFoundException({ message: 'Maquinaria no encontrada' });
+        }
+
+        // ===== ELIMINAR PDF DE PÓLIZA VIEJO SI SE REEMPLAZÓ O SE QUITÓ =====
+        if ('documento_poliza' in data && maquinaria.documento_poliza && data.documento_poliza !== maquinaria.documento_poliza) {
+            const rutaPolizaVieja = join(process.cwd(), 'uploads', 'activos', maquinaria.numero_serie, maquinaria.documento_poliza);
+            try {
+                if (fs.existsSync(rutaPolizaVieja)) {
+                    fs.unlinkSync(rutaPolizaVieja);
+                    console.log('PDF de póliza viejo eliminado:', rutaPolizaVieja);
+                }
+            } catch (err) {
+                console.error(`Error eliminando PDF de póliza ${maquinaria.documento_poliza}:`, err);
+            }
+        }
+
+        // Solo se tocan los campos de la póliza; el resto del activo no se modifica
+        const cambios: any = {};
+        if ('aseguradora' in data) cambios.aseguradora = (data.aseguradora || '').trim().toUpperCase() || null;
+        if ('numero_poliza' in data) cambios.numero_poliza = (data.numero_poliza || '').trim().toUpperCase() || null;
+        if ('fecha_inicio_poliza' in data) cambios.fecha_inicio_poliza = data.fecha_inicio_poliza;
+        if ('fecha_fin_poliza' in data) cambios.fecha_fin_poliza = data.fecha_fin_poliza;
+        if ('documento_poliza' in data) cambios.documento_poliza = data.documento_poliza;
+
+        this.maquinariaRepo.merge(maquinaria, cambios);
+        return await this.maquinariaRepo.save(maquinaria);
+    }
+
     async deleteMaquinaria(id_maquinaria: number) {
         console.log(id_maquinaria);
 

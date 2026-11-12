@@ -103,6 +103,22 @@ export class MaquinariaController {
     console.log('PAYLOAD FINAL:', payload);
     return await this.maquinariaService.updateMaquinaria(payload);
   }
+  @Put('poliza')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'archivo_poliza', maxCount: 1 },
+  ], { storage: storageMaquinaria }))
+  async actualizaPoliza(
+    @UploadedFiles() files: { archivo_poliza?: Express.Multer.File[] },
+    @Body() payload: any
+  ) {
+    // PDF nuevo de póliza: reemplaza al anterior (el servicio borra el viejo)
+    if (files?.archivo_poliza?.length) {
+      payload.documento_poliza = files.archivo_poliza[0].filename;
+    }
+    console.log('PAYLOAD PÓLIZA:', payload);
+    return await this.maquinariaService.updatePoliza(payload);
+  }
+
   @Delete('delete/:id')
   async eliminaPartida(@Param('id', ParseIntPipe) id: number) {
     console.log(id)
