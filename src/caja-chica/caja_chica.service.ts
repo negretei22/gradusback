@@ -138,6 +138,71 @@ export class CajaChicaService {
   }
 
 
+  // Diagnóstico: qué devuelve Google al pedir el CSV de cada hoja (caja y bancos).
+  // No toca leerTodo ni la lectura normal. GET /caja-chica/debug-sheet
+  async debugSheet() {
+    const hojas = [
+      { nombre: 'caja', gid: process.env.SHEET_GID },
+      { nombre: 'bancos', gid: process.env.SHEET_GID_BANCOS },
+    ];
+    const resultado = [];
+    for (const h of hojas) resultado.push(await this.debugHoja(h.nombre, h.gid));
+    return { fecha: new Date().toISOString(), hojas: resultado };
+  }
+
+  private async debugHoja(nombre: string, gid: string | undefined) {
+    const url = `https://docs.google.com/spreadsheets/d/${process.env.SHEET_ID}/export?format=csv&gid=${gid}`;
+    try {
+      const resp = await fetch(url);
+      const texto = await resp.text();
+      const esHtml = texto.trimStart().startsWith('<');
+
+      const filas = Papa.parse<string[]>(texto, { skipEmptyLines: false }).data;
+      const esPrimeraHoja = gid === '428204613';
+      const columnas = esPrimeraHoja
+        ? { numero: 0, fecha: 1, aplicado_a: 2, concepto: 3, gasto: 4, ingreso: 5, saldo: 6 }
+        : { numero: 0, fecha: 1, aplicado_a: -1, concepto: 2, gasto: 3, ingreso: 4, saldo: 5 };
+      const validas = filas.filter((r) =>
+        /^\d+$/.test((r[columnas.numero] ?? '').trim()) &&
+        this.aFecha(r[columnas.fecha]) !== '',
+      );
+
+      return {
+        hoja: nombre,
+        gid: gid ?? null,
+        url,
+        status: resp.status,
+        ok: resp.ok,
+        contentType: resp.headers.get('content-type'),
+        tamanoBytes: texto.length,
+        pareceHtml: esHtml,
+        preview: texto.slice(0, 400),
+        filasCsv: filas.length,
+        filasValidas: validas.length,
+        primerasFilas: filas.slice(0, 5),
+        fechasOriginales: filas.slice(0, 5).map((r) => r[columnas.fecha]),
+        fechasConvertidas: filas.slice(0, 5).map((r) => this.aFecha(r[columnas.fecha])),
+        muestra: validas.slice(0, 3).map((r) => ({
+          numero: r[columnas.numero],
+          fecha: this.aFecha(r[columnas.fecha]),
+          concepto: r[columnas.concepto],
+          gasto: this.aNumero(r[columnas.gasto]),
+          ingreso: this.aNumero(r[columnas.ingreso]),
+        })),
+        error: null,
+      };
+    } catch (e: any) {
+      return {
+        hoja: nombre, gid: gid ?? null, url, status: null, ok: false,
+        contentType: null, tamanoBytes: 0, pareceHtml: false, preview: '',
+        filasCsv: 0, filasValidas: 0, primerasFilas: [],
+        fechasOriginales: [], fechasConvertidas: [], muestra: [],
+        error: String(e?.message ?? e),
+      };
+    }
+  }
+
+
   // Marca cada gasto que ya existe en movimientos_financieros
   private async marcarMovimientosFinancieros(movs: any[]): Promise<any[]> {
     const gastos = movs.filter(m => m.gasto > 0);

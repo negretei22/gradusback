@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { CajaChicaService } from './caja_chica.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('caja-chica')
 export class CajaChicaController {
@@ -18,6 +19,14 @@ export class CajaChicaController {
   @Get('movimiento-financiero/:id')
   getMovimientoFinanciero(@Param('id') id: number) {
     return this.cajaChicaService.getMovimientoFinanciero(id);
+  }
+
+  // Diagnóstico temporal: qué devuelve Google al leer cada hoja (caja y bancos).
+  // Público para poder abrirlo directo en el navegador sin token.
+  @Public()
+  @Get('debug-sheet')
+  debugSheet() {
+    return this.cajaChicaService.debugSheet();
   }
 
   @Get('movimiento/:id')
