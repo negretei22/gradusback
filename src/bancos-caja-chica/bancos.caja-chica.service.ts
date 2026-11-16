@@ -7,6 +7,8 @@ import { CajaChicaService } from '../caja-chica/caja_chica.service';
 const FORMA_PAGO: Record<number, string> = {
     2: 'Transferencia electrónica de fondos',
     3: 'Tarjeta de débito',
+    4: 'Cheque',
+    6: 'Tarjeta de débito Banorte',
 };
 
 @Injectable()
@@ -123,7 +125,7 @@ export class BancosCajaChicaService {
                     concepto, tipo_movimiento_id, metodo_pago_id, importe_sin_iva
              FROM movimientos_financieros
              WHERE tipo_movimiento_id IN ('1','2')
-               AND metodo_pago_id IN (2,3,4)
+               AND metodo_pago_id IN (2,3,4,6)
                AND fecha_pago >= ? AND fecha_pago < ?
              ORDER BY fecha_pago, id`,
             [desde, hasta],
@@ -148,6 +150,7 @@ export class BancosCajaChicaService {
             const esEgreso = String(b.tipo_movimiento_id) === '2';
             return {
                 origen: 'banco', ref: b.id, fecha: b.fecha, concepto: b.concepto,
+                movimiento_financiero_id: b.id,
                 concepto_caja: null as string | null,
                 banco_gasto: esEgreso ? monto : 0,
                 banco_ingreso: esEgreso ? 0 : monto,
@@ -158,6 +161,7 @@ export class BancosCajaChicaService {
 
         const filasCaja = cajaMes.map(c => ({
             origen: 'caja', ref: c.id, fecha: c.fecha, concepto: c.concepto,
+            movimiento_financiero_id: null,
             concepto_caja: null as string | null,
             banco_gasto: 0, banco_ingreso: 0,
             caja_gasto: c.gasto, caja_ingreso: c.ingreso,

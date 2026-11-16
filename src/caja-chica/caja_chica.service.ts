@@ -145,7 +145,8 @@ export class CajaChicaService {
       { nombre: 'caja', gid: process.env.SHEET_GID },
       { nombre: 'bancos', gid: process.env.SHEET_GID_BANCOS },
     ];
-    const resultado = [];
+    const resultado: any[] = [];
+
     for (const h of hojas) resultado.push(await this.debugHoja(h.nombre, h.gid));
     return { fecha: new Date().toISOString(), hojas: resultado };
   }
