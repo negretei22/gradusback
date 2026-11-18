@@ -9,7 +9,8 @@ export class CajaChicaService {
 
   constructor(@InjectDataSource() private dataSource: DataSource) { }
 
-  private cache: { data: any[]; ts: number } | null = null;
+  // Última lectura buena por hoja (gid), para no dejar el mes vacío si Google falla
+  private cache = new Map<string, { data: any[]; ts: number }>();
   private readonly TTL_MS = 30_000;
 
   // "$1,234.50" -> 1234.5 | "($50.00)" o "-$50" -> -50
@@ -46,21 +47,29 @@ export class CajaChicaService {
 
 
   async leerTodo(gid: string = process.env.SHEET_GID!): Promise<any[]> {
-    /*if (this.cache && Date.now() - this.cache.ts < this.TTL_MS) {
-      return this.cache.data;
-    }*/
-
-
+    const cacheado = this.cache.get(gid);
+    if (cacheado && Date.now() - cacheado.ts < this.TTL_MS) {
+      return cacheado.data;
+    }
 
     const url = `https://docs.google.com/spreadsheets/d/${process.env.SHEET_ID}/export?format=csv&gid=${gid}`;
 
-    const resp = await fetch(url);
-
-    if (!resp.ok) {
-      throw new Error(`No se pudo leer el Sheet (${resp.status})`);
+    // Si Google no contesta, se usan los últimos datos buenos de esta hoja
+    // en vez de tronar toda la lectura.
+    let csv = '';
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        throw new Error(`No se pudo leer el Sheet (${resp.status})`);
+      }
+      csv = await resp.text();
+    } catch (e) {
+      if (cacheado) {
+        console.warn(`leerTodo: no se pudo leer el Sheet (gid ${gid}), se usan datos en caché:`, e);
+        return cacheado.data;
+      }
+      throw e;
     }
-
-    const csv = await resp.text();
 
     const filas = Papa.parse<string[]>(csv, {
       skipEmptyLines: false,
@@ -132,7 +141,7 @@ export class CajaChicaService {
         };
       });
 
-    this.cache = { data, ts: Date.now() };
+    this.cache.set(gid, { data, ts: Date.now() });
 
     return data;
   }

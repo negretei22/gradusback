@@ -100,6 +100,9 @@ export class BancosCajaChicaService {
     // Guarda el saldo final de este mes como saldo anterior del mes siguiente
     async cerrarMes(anio: number, mes: number) {
         const actual = await this.getMes(anio, mes);
+        if (actual.error_hoja) {
+            throw new Error('No se puede cerrar el mes: no se pudo leer la hoja de Caja Chica.');
+        }
         const sigMes = Number(mes) === 12 ? 1 : Number(mes) + 1;
         const sigAnio = Number(mes) === 12 ? Number(anio) + 1 : Number(anio);
         const { banco, caja } = actual.saldo_final;
@@ -141,7 +144,16 @@ export class BancosCajaChicaService {
         );
 
         // ===== CAJA CHICA (Sheet) =====
-        const todos = await this.cajaChica.leerTodo(process.env.SHEET_GID_BANCOS!);
+        // Si la hoja no se puede leer, el mes sigue mostrando los movimientos
+        // del banco y avisa con error_hoja, en vez de tronar todo.
+        let todos: any[] = [];
+        let errorHoja: string | null = null;
+        try {
+            todos = await this.cajaChica.leerTodo(process.env.SHEET_GID_BANCOS!);
+        } catch (e: any) {
+            errorHoja = 'No se pudo leer la hoja de Caja Chica. Se muestran solo los movimientos del banco.';
+            console.warn('getMes: no se pudo leer la hoja, se continúa solo con banco:', e?.message ?? e);
+        }
         const cajaMes = todos.filter(m => m.fecha >= desde && m.fecha < hasta);
 
         // ===== FILAS BASE =====
@@ -227,6 +239,7 @@ export class BancosCajaChicaService {
         return {
             saldo_anterior: saldoAnterior,
             saldo_anterior_guardado: manual,
+            error_hoja: errorHoja,
             movimientos,
             totales,
             saldo_final: {
