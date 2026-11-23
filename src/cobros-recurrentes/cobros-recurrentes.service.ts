@@ -39,6 +39,66 @@ function hoyLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// ---------- Factura derivada de archivo_factura (v14) ----------
+
+// archivo_factura se guarda en movimientos_financieros como TEXT con un
+// JSON string de un arreglo de nombres de PDF, p. ej.
+// '["518_87.pdf","518_89.pdf"]' (los archivos se renombran a
+// {movimiento_id}_{nombre_original} al subirlos, ver FinanzasService).
+// Se acepta también un arreglo ya parseado o texto separado por comas.
+function archivosFactura(
+  valor: string | string[] | null | undefined,
+): string[] {
+  if (valor === null || valor === undefined) return [];
+  if (Array.isArray(valor)) return valor.filter((v) => typeof v === 'string');
+  const texto = String(valor).trim();
+  if (!texto) return [];
+  try {
+    const parsed = JSON.parse(texto);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v) => typeof v === 'string');
+    }
+    if (typeof parsed === 'string') return [parsed];
+    return [];
+  } catch {
+    // No es JSON: texto separado por comas o un solo nombre.
+    return texto
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
+}
+
+// "518_87.pdf" -> "F87": parte después del último "_" sin la extensión,
+// con prefijo "F". Si el nombre no sigue ese patrón, el nombre sin
+// extensión tal cual.
+function folioDeArchivo(nombre: string): string {
+  const base = nombre.trim().replace(/\.[^.]*$/, '');
+  const i = base.lastIndexOf('_');
+  if (i === -1 || i === base.length - 1) return base;
+  return `F${base.slice(i + 1)}`;
+}
+
+// Une los folios derivados de uno o varios archivo_factura, en orden y
+// sin duplicados: ["518_87.pdf","518_89.pdf"] -> "F87 y F89".
+// Vacío/ausente -> "".
+function facturaDeArchivos(
+  ...valores: Array<string | string[] | null | undefined>
+): string {
+  const vistos = new Set<string>();
+  const folios: string[] = [];
+  for (const valor of valores) {
+    for (const nombre of archivosFactura(valor)) {
+      const folio = folioDeArchivo(nombre);
+      if (folio && !vistos.has(folio)) {
+        vistos.add(folio);
+        folios.push(folio);
+      }
+    }
+  }
+  return folios.join(' y ');
+}
+
 interface MovimientoMes {
   id: number;
   concepto: string;
@@ -46,6 +106,7 @@ interface MovimientoMes {
   gran_total: number;
   importe_sin_iva: number;
   fecha_pago: string | null; // DATE_FORMAT('%Y-%m-%d') -> string o null
+  archivo_factura: string | null; // TEXT con JSON string: ["518_87.pdf", ...]
 }
 
 // Factura ligada a un cobro recurrente (v4), con los datos del movimiento.
@@ -411,7 +472,7 @@ export class CobrosRecurrentesService {
     // comparación con hoy es lexicográfica y no pasa por new Date().
     const movimientos: MovimientoMes[] = await this.movimientosRepo.query(
       `SELECT m.id, m.concepto, m.razon_social, m.gran_total,
-              m.importe_sin_iva,
+              m.importe_sin_iva, m.archivo_factura,
               DATE_FORMAT(m.fecha_pago, '%Y-%m-%d') AS fecha_pago
          FROM movimientos_financieros m
         WHERE m.tipo_movimiento_id = '1'
@@ -552,8 +613,17 @@ export class CobrosRecurrentesService {
         no_fiscal: Number(rec.no_fiscal) || 0,
         fecha_pago: pagado && fechaMaxima ? fechaMaxima : fechaProgramada,
         pagado,
-        // Facturas ligadas con folio_fiscal (v13): el front arma el FOLIO
-        // del Excel combinado uniendo los folio_fiscal con " y ".
+        // FACTURA (v14): folios derivados del archivo_factura de los
+        // movimientos casados del mes, en orden y sin duplicados
+        // ("518_87.pdf" -> "F87"). En Cobros esta es la columna que
+        // sustituye a la fecha de pago; fecha_pago se sigue calculando
+        // igual por dentro (orden v11 y pagado no cambian).
+        factura: facturaDeArchivos(
+          ...casados.map((m) => m.archivo_factura),
+        ),
+        // Facturas ligadas con folio_fiscal (v13): las usa el formulario
+        // de cobros. El FOLIO del Excel ya NO sale de aquí (v14: sale
+        // de fila.factura, derivada de archivo_factura).
         facturas: facturasPorCobro.get(rec.id) ?? [],
       });
     }
@@ -571,6 +641,9 @@ export class CobrosRecurrentesService {
         no_fiscal: 0,
         fecha_pago: mov.fecha_pago ?? 'Por definir',
         pagado,
+        // FACTURA (v14): folio derivado del archivo_factura de su propio
+        // movimiento ("518_87.pdf" -> "F87"). Vacío/ausente -> "".
+        factura: facturaDeArchivos(mov.archivo_factura),
         incluido: seleccion.has(mov.id) ? seleccion.get(mov.id)! : true,
       });
     }
