@@ -457,7 +457,7 @@ export class PagosRecurrentesService {
         beneficiario: rec.beneficiario,
         fiscal,
         no_fiscal: Number(rec.no_fiscal) || 0,
-        fecha_pago: pagado ? fechaMaxima : fechaProgramada,
+        fecha_pago: pagado && fechaMaxima ? fechaMaxima : fechaProgramada,
         pagado,
       });
     }
@@ -478,28 +478,48 @@ export class PagosRecurrentesService {
       });
     }
 
-    // Orden (v9): MEZCLADO por fecha: recurrentes y extras intercalados
-    // por fecha_pago ASC ('Por definir' al final). En empate de fecha,
-    // primero las filas de recurrente y luego las de factura; dentro de
-    // recurrentes empatadas, por pago_recurrente_id ASC; dentro de extras
-    // empatadas, por concepto.
-    filas.sort((a, b) => {
-      const aSinFecha = a.fecha_pago === 'Por definir';
-      const bSinFecha = b.fecha_pago === 'Por definir';
-      if (aSinFecha && !bSinFecha) return 1;
-      if (!aSinFecha && bSinFecha) return -1;
-      if (!aSinFecha && !bSinFecha && a.fecha_pago !== b.fecha_pago) {
-        return a.fecha_pago < b.fecha_pago ? -1 : 1;
+    // Orden (v11): MEZCLA — base de recurrentes por pago_recurrente_id ASC;
+    // cada extra se inserta antes del primer recurrente cuya fecha efectiva
+    // sea ESTRICTAMENTE MAYOR que la de la extra (en empate va primero el
+    // recurrente). 'Por definir' (sin fecha) cuenta como infinito: los
+    // recurrentes sin fecha quedan al final de la base y las extras sin
+    // fecha al final de todo, en orden de concepto. La fecha efectiva es
+    // la misma que se muestra en la columna Fecha (fila.fecha_pago), así
+    // que el orden y lo mostrado coinciden en las dos secciones.
+    const fechaEfectiva = (f: any): string | null =>
+      f.fecha_pago === 'Por definir' || f.fecha_pago == null
+        ? null
+        : f.fecha_pago;
+    const recurrentesOrdenados = filas
+      .filter((f) => f.origen === 'recurrente')
+      .sort((a, b) => a.pago_recurrente_id - b.pago_recurrente_id);
+    const extrasOrdenadas = filas
+      .filter((f) => f.origen !== 'recurrente')
+      .sort((a, b) => {
+        const fa = fechaEfectiva(a);
+        const fb = fechaEfectiva(b);
+        if (!fa && !fb)
+          return (a.concepto || '').localeCompare(b.concepto || '');
+        if (!fa) return 1;
+        if (!fb) return -1;
+        if (fa !== fb) return fa < fb ? -1 : 1;
+        return (a.concepto || '').localeCompare(b.concepto || '');
+      });
+    const mezcladas: any[] = [...recurrentesOrdenados];
+    for (const ex of extrasOrdenadas) {
+      const fe = fechaEfectiva(ex);
+      let idx = mezcladas.length;
+      if (fe !== null) {
+        const i = mezcladas.findIndex((f) => {
+          const fd = fechaEfectiva(f);
+          return fd === null || fd > fe;
+        });
+        if (i !== -1) idx = i;
       }
-      const aRec = a.origen === 'recurrente';
-      const bRec = b.origen === 'recurrente';
-      if (aRec && !bRec) return -1;
-      if (!aRec && bRec) return 1;
-      if (aRec && bRec && a.pago_recurrente_id !== b.pago_recurrente_id) {
-        return a.pago_recurrente_id - b.pago_recurrente_id;
-      }
-      return (a.concepto || '').localeCompare(b.concepto || '');
-    });
+      mezcladas.splice(idx, 0, ex);
+    }
+    filas.length = 0;
+    filas.push(...mezcladas);
 
     const total_fiscal = filas.reduce((s, f) => s + (Number(f.fiscal) || 0), 0);
     const total_no_fiscal = filas.reduce((s, f) => s + (Number(f.no_fiscal) || 0), 0);
