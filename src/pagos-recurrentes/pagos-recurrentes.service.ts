@@ -344,7 +344,9 @@ export class PagosRecurrentesService {
 
     // Facturas ligadas a cada recurrente (v4): el matching se hace contra
     // cualquiera de ellas; sin ligadas, se casa por concepto+beneficiario
-    // del propio recurrente (comportamiento v3).
+    // del propio recurrente (comportamiento v3). La regla por monto (v7)
+    // compara además contra el fiscal guardado del recurrente o el de
+    // cualquiera de sus facturas ligadas (ver casaCon).
     const facturasPorPago = await this.cargarFacturas(
       recurrentes.map((r) => r.id),
     );
@@ -363,18 +365,40 @@ export class PagosRecurrentesService {
 
     const casaCon = (rec: PagoRecurrente, mov: MovimientoMes): boolean => {
       const ligadas = facturasPorPago.get(rec.id) ?? [];
-      if (ligadas.length > 0) {
-        return ligadas.some((f) => {
-          if (normalizar(f.concepto) !== normalizar(mov.concepto)) return false;
-          const razon = normalizar(f.razon_social);
-          if (!razon) return true; // factura sin razón social: solo importa el concepto
-          return razon === normalizar(mov.razon_social);
-        });
-      }
-      if (normalizar(rec.concepto) !== normalizar(mov.concepto)) return false;
+
+      // (a) Cruce por concepto+beneficiario, como hasta hoy: contra
+      // cualquiera de sus facturas ligadas, o contra el propio recurrente
+      // cuando no tiene ligadas.
+      const casaPorConcepto = (): boolean => {
+        if (ligadas.length > 0) {
+          return ligadas.some((f) => {
+            if (normalizar(f.concepto) !== normalizar(mov.concepto)) return false;
+            const razon = normalizar(f.razon_social);
+            if (!razon) return true; // factura sin razón social: solo importa el concepto
+            return razon === normalizar(mov.razon_social);
+          });
+        }
+        if (normalizar(rec.concepto) !== normalizar(mov.concepto)) return false;
+        const beneficiario = normalizar(rec.beneficiario);
+        if (!beneficiario) return true; // sin beneficiario: solo importa el concepto
+        return beneficiario === normalizar(mov.razon_social);
+      };
+      if (casaPorConcepto()) return true;
+
+      // (b) Cruce por MONTO (v7): mismo beneficiario normalizado (NO vacío
+      // en ninguno de los dos lados) Y mismo importe_sin_iva que el fiscal
+      // guardado del recurrente o el de cualquiera de sus facturas ligadas
+      // (tolerancia $0.01 por ruido de flotantes). Nunca casa solo por
+      // monto: sin beneficiario en algún lado no hay cruce.
       const beneficiario = normalizar(rec.beneficiario);
-      if (!beneficiario) return true; // sin beneficiario: solo importa el concepto
-      return beneficiario === normalizar(mov.razon_social);
+      const razonMov = normalizar(mov.razon_social);
+      if (!beneficiario || !razonMov || beneficiario !== razonMov) return false;
+      const importeMov = Number(mov.importe_sin_iva) || 0;
+      const montos = [
+        Number(rec.fiscal) || 0,
+        ...ligadas.map((f) => Number(f.importe_sin_iva) || 0),
+      ];
+      return montos.some((monto) => Math.abs(importeMov - monto) < 0.01);
     };
 
     const estaPagado = (mov: MovimientoMes): boolean =>
