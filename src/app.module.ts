@@ -34,6 +34,11 @@ import { MovimientoFinancieroPago } from './finanzas/movimiento-financiero-pago.
 import { PagoRecurrente } from './pagos-recurrentes/pago-recurrente.entity';
 import { PagoRecurrenteFactura } from './pagos-recurrentes/pago-recurrente-factura.entity';
 import { PagoRecurrentePago } from './pagos-recurrentes/pago-recurrente-pago.entity';
+import { PagoRecurrenteSeleccion } from './pagos-recurrentes/pago-recurrente-seleccion.entity';
+import { CobroRecurrente } from './cobros-recurrentes/cobro-recurrente.entity';
+import { CobroRecurrenteFactura } from './cobros-recurrentes/cobro-recurrente-factura.entity';
+import { CobroRecurrentePago } from './cobros-recurrentes/cobro-recurrente-pago.entity';
+import { CobroRecurrenteSeleccion } from './cobros-recurrentes/cobro-recurrente-seleccion.entity';
 
 
 
@@ -66,6 +71,7 @@ import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
 import { BancosCajaChicaModule } from './bancos-caja-chica/bancos-caja-chica.module';
 import { PagosRecurrentesModule } from './pagos-recurrentes/pagos-recurrentes.module';
+import { CobrosRecurrentesModule } from './cobros-recurrentes/cobros-recurrentes.module';
 import { ServicioService } from './servicios/servicios.service';
 import { ConciliacionController } from './conciliacion/conciliacion.controller';
 
@@ -93,7 +99,7 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
         Procedimiento, MovimientoCajaChica, Modulo, Role,
-        Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente, PagoRecurrenteFactura, PagoRecurrentePago
+        Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente, PagoRecurrenteFactura, PagoRecurrentePago, PagoRecurrenteSeleccion, CobroRecurrente, CobroRecurrenteFactura, CobroRecurrentePago, CobroRecurrenteSeleccion
       ],
       synchronize: true,
     }),
@@ -110,7 +116,8 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
     ServicioModule,
     BancosCajaChicaModule,
     ConciliacionModule,
-    PagosRecurrentesModule
+    PagosRecurrentesModule,
+    CobrosRecurrentesModule
     
   ],
   controllers: [AppController],

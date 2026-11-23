@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { PagoRecurrente } from './pago-recurrente.entity';
 import { PagoRecurrenteFactura } from './pago-recurrente-factura.entity';
 import { PagoRecurrentePago } from './pago-recurrente-pago.entity';
+import { PagoRecurrenteSeleccion } from './pago-recurrente-seleccion.entity';
 import { MovimientoFinanciero } from '../finanzas/movimientos_financieros.entity';
 
 // Misma fecha efectiva que FinanzasService.findMovimientos: fecha_factura,
@@ -53,6 +54,7 @@ export interface FacturaLigada {
   concepto: string;
   razon_social: string | null;
   importe_sin_iva: number;
+  folio_fiscal: string | null;
 }
 
 @Injectable()
@@ -64,6 +66,8 @@ export class PagosRecurrentesService {
     private readonly facturasRepo: Repository<PagoRecurrenteFactura>,
     @InjectRepository(PagoRecurrentePago)
     private readonly pagadosRepo: Repository<PagoRecurrentePago>,
+    @InjectRepository(PagoRecurrenteSeleccion)
+    private readonly seleccionRepo: Repository<PagoRecurrenteSeleccion>,
     @InjectRepository(MovimientoFinanciero)
     private readonly movimientosRepo: Repository<MovimientoFinanciero>,
   ) {}
@@ -159,7 +163,7 @@ export class PagosRecurrentesService {
     const marcadores = pagoIds.map(() => '?').join(',');
     const filas: any[] = await this.facturasRepo.query(
       `SELECT f.pago_recurrente_id, m.id, m.concepto, m.razon_social,
-              m.importe_sin_iva
+              m.importe_sin_iva, m.folio_fiscal
          FROM pagos_recurrentes_facturas f
          JOIN movimientos_financieros m ON m.id = f.movimiento_id
         WHERE f.pago_recurrente_id IN (${marcadores})
@@ -172,6 +176,7 @@ export class PagosRecurrentesService {
         concepto: fila.concepto,
         razon_social: fila.razon_social,
         importe_sin_iva: Number(fila.importe_sin_iva) || 0,
+        folio_fiscal: fila.folio_fiscal ?? null,
       });
     }
     return mapa;
@@ -291,6 +296,85 @@ export class PagosRecurrentesService {
     return { ok: true, pagado: valor === 1 };
   }
 
+  // ---------- Selección guardada de extras (v13) ----------
+
+  private validarAnioMes(anio: any, mes: any): { anio: number; mes: number } {
+    const a = Number(anio);
+    const m = Number(mes);
+    if (!Number.isInteger(a) || a < 1900 || a > 2100) {
+      throw new BadRequestException('Año inválido');
+    }
+    if (!Number.isInteger(m) || m < 1 || m > 12) {
+      throw new BadRequestException('Mes inválido (1-12)');
+    }
+    return { anio: a, mes: m };
+  }
+
+  private validarIncluido(payload: any): number {
+    if (
+      payload.incluido !== true &&
+      payload.incluido !== false &&
+      payload.incluido !== 1 &&
+      payload.incluido !== 0
+    ) {
+      throw new BadRequestException('El campo incluido debe ser booleano');
+    }
+    return payload.incluido ? 1 : 0;
+  }
+
+  // UPSERT de la selección de una extra del mes: si existe el renglón
+  // (anio, mes, movimiento_id) lo actualiza, si no lo crea. Sin renglón,
+  // la extra se considera incluida (default true, ver reporte()).
+  async setSeleccion(
+    payload: any,
+  ): Promise<{ ok: boolean; incluido: boolean }> {
+    const { anio, mes } = this.validarAnioMes(payload.anio, payload.mes);
+    const movimiento_id = Number(payload.movimiento_id);
+    if (!Number.isInteger(movimiento_id) || movimiento_id <= 0) {
+      throw new BadRequestException('movimiento_id inválido');
+    }
+    const valor = this.validarIncluido(payload);
+    const existente = await this.seleccionRepo.findOne({
+      where: { anio, mes, movimiento_id },
+    });
+    if (existente) {
+      existente.incluido = valor;
+      await this.seleccionRepo.save(existente);
+    } else {
+      await this.seleccionRepo.save(
+        this.seleccionRepo.create({ anio, mes, movimiento_id, incluido: valor }),
+      );
+    }
+    return { ok: true, incluido: valor === 1 };
+  }
+
+  // Selección masiva del mes (Todas/Ninguna): aplica el valor a TODAS las
+  // extras del mes — las que reporte() devuelve con origen 'factura' — con
+  // un upsert por cada movimiento_id. Las recurrentes no se tocan.
+  async setSeleccionMes(
+    payload: any,
+  ): Promise<{ ok: boolean; incluido: boolean; total: number }> {
+    const { anio, mes } = this.validarAnioMes(payload.anio, payload.mes);
+    const valor = this.validarIncluido(payload);
+    const rep = await this.reporte(anio, mes);
+    const extras = rep.filas.filter((f: any) => f.origen === 'factura');
+    for (const ex of extras) {
+      const movimiento_id = ex.movimiento_id as number;
+      const existente = await this.seleccionRepo.findOne({
+        where: { anio, mes, movimiento_id },
+      });
+      if (existente) {
+        existente.incluido = valor;
+        await this.seleccionRepo.save(existente);
+      } else {
+        await this.seleccionRepo.save(
+          this.seleccionRepo.create({ anio, mes, movimiento_id, incluido: valor }),
+        );
+      }
+    }
+    return { ok: true, incluido: valor === 1, total: extras.length };
+  }
+
   // ---------- Buscar facturas (alta desde un movimiento) ----------
 
   buscarFacturas(texto: string) {
@@ -361,6 +445,15 @@ export class PagosRecurrentesService {
       await this.pagadosRepo.find({ where: { anio, mes } });
     for (const r of renglonesPagado) {
       overrides.set(r.pago_recurrente_id, r.pagado === 1);
+    }
+
+    // Selección guardada de extras (v13) para este (anio, mes): mapa
+    // movimiento_id -> incluido. Sin renglón, la extra va incluida.
+    const seleccion = new Map<number, boolean>();
+    const renglonesSeleccion: PagoRecurrenteSeleccion[] =
+      await this.seleccionRepo.find({ where: { anio, mes } });
+    for (const r of renglonesSeleccion) {
+      seleccion.set(r.movimiento_id, r.incluido === 1);
     }
 
     const casaCon = (rec: PagoRecurrente, mov: MovimientoMes): boolean => {
@@ -459,6 +552,9 @@ export class PagosRecurrentesService {
         no_fiscal: Number(rec.no_fiscal) || 0,
         fecha_pago: pagado && fechaMaxima ? fechaMaxima : fechaProgramada,
         pagado,
+        // Facturas ligadas con folio_fiscal (v13): el front arma el FOLIO
+        // del Excel combinado uniendo los folio_fiscal con " y ".
+        facturas: facturasPorPago.get(rec.id) ?? [],
       });
     }
 
@@ -475,6 +571,7 @@ export class PagosRecurrentesService {
         no_fiscal: 0,
         fecha_pago: mov.fecha_pago ?? 'Por definir',
         pagado,
+        incluido: seleccion.has(mov.id) ? seleccion.get(mov.id)! : true,
       });
     }
 
