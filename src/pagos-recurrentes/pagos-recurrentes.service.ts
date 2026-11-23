@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PagoRecurrente } from './pago-recurrente.entity';
+import { PagoRecurrenteFactura } from './pago-recurrente-factura.entity';
 import { MovimientoFinanciero } from '../finanzas/movimientos_financieros.entity';
 
 // Misma fecha efectiva que FinanzasService.findMovimientos: fecha_factura,
@@ -45,11 +46,21 @@ interface MovimientoMes {
   fecha_pago: string | null; // DATE_FORMAT('%Y-%m-%d') -> string o null
 }
 
+// Factura ligada a un pago recurrente (v4), con los datos del movimiento.
+export interface FacturaLigada {
+  id: number;
+  concepto: string;
+  razon_social: string | null;
+  importe_sin_iva: number;
+}
+
 @Injectable()
 export class PagosRecurrentesService {
   constructor(
     @InjectRepository(PagoRecurrente)
     private readonly pagosRepo: Repository<PagoRecurrente>,
+    @InjectRepository(PagoRecurrenteFactura)
+    private readonly facturasRepo: Repository<PagoRecurrenteFactura>,
     @InjectRepository(MovimientoFinanciero)
     private readonly movimientosRepo: Repository<MovimientoFinanciero>,
   ) {}
@@ -97,6 +108,8 @@ export class PagosRecurrentesService {
         dia === null || dia === undefined || dia === '' ? null : Number(dia),
       activo:
         payload.activo === false || payload.activo === 0 ? 0 : 1,
+      monto_factura:
+        payload.monto_factura === false || payload.monto_factura === 0 ? 0 : 1,
       movimiento_id:
         payload.movimiento_id === null ||
         payload.movimiento_id === undefined ||
@@ -106,16 +119,67 @@ export class PagosRecurrentesService {
     };
   }
 
-  // ---------- CRUD ----------
+  // ---------- Facturas ligadas (v4) ----------
 
-  findAll(): Promise<PagoRecurrente[]> {
-    return this.pagosRepo.find({
-      where: { activo: 1 },
-      order: { concepto: 'ASC' },
-    });
+  // factura_ids del payload: lista de ids válidos sin duplicados, o
+  // undefined si el payload no trae el campo (no tocar los links).
+  private facturaIds(payload: any): number[] | undefined {
+    const ids = payload.factura_ids;
+    if (ids === undefined || ids === null) return undefined;
+    if (!Array.isArray(ids)) return undefined;
+    return [
+      ...new Set(
+        ids.map(Number).filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ];
   }
 
-  async findOne(id: number): Promise<PagoRecurrente> {
+  // Reemplaza los links de facturas de un pago por la lista dada.
+  private async guardarFacturas(pagoId: number, ids: number[]): Promise<void> {
+    await this.facturasRepo.delete({ pago_recurrente_id: pagoId });
+    if (ids.length === 0) return;
+    const links = ids.map((movimiento_id) =>
+      this.facturasRepo.create({ pago_recurrente_id: pagoId, movimiento_id }),
+    );
+    await this.facturasRepo.save(links);
+  }
+
+  // Facturas ligadas de varios pagos: mapa pagoId -> [factura, ...].
+  // Solo trae las que aún existen en movimientos_financieros.
+  private async cargarFacturas(
+    pagoIds: number[],
+  ): Promise<Map<number, FacturaLigada[]>> {
+    const mapa = new Map<number, FacturaLigada[]>();
+    for (const id of pagoIds) mapa.set(id, []);
+    if (pagoIds.length === 0) return mapa;
+
+    const marcadores = pagoIds.map(() => '?').join(',');
+    const filas: any[] = await this.facturasRepo.query(
+      `SELECT f.pago_recurrente_id, m.id, m.concepto, m.razon_social,
+              m.importe_sin_iva
+         FROM pagos_recurrentes_facturas f
+         JOIN movimientos_financieros m ON m.id = f.movimiento_id
+        WHERE f.pago_recurrente_id IN (${marcadores})
+        ORDER BY f.id ASC`,
+      pagoIds,
+    );
+    for (const fila of filas) {
+      mapa.get(fila.pago_recurrente_id)?.push({
+        id: fila.id,
+        concepto: fila.concepto,
+        razon_social: fila.razon_social,
+        importe_sin_iva: Number(fila.importe_sin_iva) || 0,
+      });
+    }
+    return mapa;
+  }
+
+  private async conFacturas(pago: PagoRecurrente) {
+    const mapa = await this.cargarFacturas([pago.id]);
+    return { ...pago, facturas: mapa.get(pago.id) ?? [] };
+  }
+
+  private async buscarPago(id: number): Promise<PagoRecurrente> {
     const pago = await this.pagosRepo.findOne({ where: { id, activo: 1 } });
     if (!pago) {
       throw new NotFoundException('Pago recurrente no encontrado');
@@ -123,22 +187,55 @@ export class PagosRecurrentesService {
     return pago;
   }
 
-  async create(payload: any): Promise<PagoRecurrente> {
-    this.validar(payload);
-    const pago = this.pagosRepo.create(this.limpiar(payload));
-    return this.pagosRepo.save(pago);
+  // ---------- CRUD ----------
+
+  async findAll() {
+    const pagos = await this.pagosRepo.find({
+      where: { activo: 1 },
+      order: { concepto: 'ASC' },
+    });
+    const mapa = await this.cargarFacturas(pagos.map((p) => p.id));
+    return pagos.map((p) => ({ ...p, facturas: mapa.get(p.id) ?? [] }));
   }
 
-  async update(id: number, payload: any): Promise<PagoRecurrente> {
-    const pago = await this.findOne(id);
+  async findOne(id: number) {
+    return this.conFacturas(await this.buscarPago(id));
+  }
+
+  async create(payload: any) {
+    this.validar(payload);
+    const datos = this.limpiar(payload);
+    const ids = this.facturaIds(payload);
+    if (ids !== undefined) {
+      // Compatibilidad: movimiento_id guarda el primer id ligado (o null).
+      datos.movimiento_id = ids[0] ?? null;
+    }
+    const pago = await this.pagosRepo.save(this.pagosRepo.create(datos));
+    if (ids !== undefined) {
+      await this.guardarFacturas(pago.id, ids);
+    }
+    return this.conFacturas(pago);
+  }
+
+  async update(id: number, payload: any) {
+    const pago = await this.buscarPago(id);
     this.validar({ ...pago, ...payload });
-    Object.assign(pago, this.limpiar({ ...pago, ...payload }));
-    return this.pagosRepo.save(pago);
+    const datos = this.limpiar({ ...pago, ...payload });
+    const ids = this.facturaIds(payload);
+    if (ids !== undefined) {
+      datos.movimiento_id = ids[0] ?? null;
+    }
+    Object.assign(pago, datos);
+    const guardado = await this.pagosRepo.save(pago);
+    if (ids !== undefined) {
+      await this.guardarFacturas(guardado.id, ids);
+    }
+    return this.conFacturas(guardado);
   }
 
   // Soft delete: activo = 0.
   async remove(id: number): Promise<{ ok: boolean }> {
-    const pago = await this.findOne(id);
+    const pago = await this.buscarPago(id);
     pago.activo = 0;
     await this.pagosRepo.save(pago);
     return { ok: true };
@@ -195,10 +292,26 @@ export class PagosRecurrentesService {
       order: { concepto: 'ASC' },
     });
 
+    // Facturas ligadas a cada recurrente (v4): el matching se hace contra
+    // cualquiera de ellas; sin ligadas, se casa por concepto+beneficiario
+    // del propio recurrente (comportamiento v3).
+    const facturasPorPago = await this.cargarFacturas(
+      recurrentes.map((r) => r.id),
+    );
+
     const consumidos = new Set<number>();
     const filas: any[] = [];
 
     const casaCon = (rec: PagoRecurrente, mov: MovimientoMes): boolean => {
+      const ligadas = facturasPorPago.get(rec.id) ?? [];
+      if (ligadas.length > 0) {
+        return ligadas.some((f) => {
+          if (normalizar(f.concepto) !== normalizar(mov.concepto)) return false;
+          const razon = normalizar(f.razon_social);
+          if (!razon) return true; // factura sin razón social: solo importa el concepto
+          return razon === normalizar(mov.razon_social);
+        });
+      }
       if (normalizar(rec.concepto) !== normalizar(mov.concepto)) return false;
       const beneficiario = normalizar(rec.beneficiario);
       if (!beneficiario) return true; // sin beneficiario: solo importa el concepto
@@ -209,28 +322,50 @@ export class PagosRecurrentesService {
       mov.fecha_pago !== null && mov.fecha_pago <= hoy;
 
     for (const rec of recurrentes) {
-      const candidatos = movimientos.filter(
+      // Se consumen TODOS los movimientos casados del mes (v4), para que
+      // ninguno aparezca también como extra.
+      const casados = movimientos.filter(
         (m) => !consumidos.has(m.id) && casaCon(rec, m),
       );
-      // Se consume UN movimiento por recurrente: preferir el pagado.
-      const pagado = candidatos.find(estaPagado);
-      const consumido = pagado ?? candidatos[0] ?? null;
-      if (consumido) consumidos.add(consumido.id);
+      for (const m of casados) consumidos.add(m.id);
 
       const fechaProgramada =
         rec.dia_pago !== null && rec.dia_pago !== undefined
           ? `${anio}-${mesPad}-${String(rec.dia_pago).padStart(2, '0')}`
           : 'Por definir';
 
+      // Pagado: hay al menos un casado Y todos tienen fecha_pago <= hoy.
+      const pagado =
+        casados.length > 0 && casados.every((m) => estaPagado(m));
+
+      // Fecha mostrada: la fecha_pago máxima entre los casados cuando está
+      // pagado; si no, la programada.
+      const fechaMaxima = pagado
+        ? casados.reduce(
+            (max, m) => (m.fecha_pago! > max ? m.fecha_pago! : max),
+            casados[0].fecha_pago!,
+          )
+        : null;
+
+      // Monto de las facturas del mes: con monto_factura=1, la SUMA del
+      // importe_sin_iva de los movimientos casados; si aún no hay casados,
+      // el guardado es respaldo. Con monto_factura=0, el guardado.
+      const fiscal =
+        rec.monto_factura === 1
+          ? casados.length > 0
+            ? casados.reduce((s, m) => s + (Number(m.importe_sin_iva) || 0), 0)
+            : Number(rec.fiscal) || 0
+          : Number(rec.fiscal) || 0;
+
       filas.push({
         origen: 'recurrente',
         id: rec.id,
         concepto: rec.concepto,
         beneficiario: rec.beneficiario,
-        fiscal: Number(rec.fiscal) || 0,
+        fiscal,
         no_fiscal: Number(rec.no_fiscal) || 0,
-        fecha_pago: pagado ? pagado.fecha_pago : fechaProgramada,
-        pagado: !!pagado,
+        fecha_pago: pagado ? fechaMaxima : fechaProgramada,
+        pagado,
       });
     }
 
