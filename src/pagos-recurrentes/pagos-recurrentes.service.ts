@@ -41,6 +41,7 @@ interface MovimientoMes {
   concepto: string;
   razon_social: string | null;
   gran_total: number;
+  importe_sin_iva: number;
   fecha_pago: string | null; // DATE_FORMAT('%Y-%m-%d') -> string o null
 }
 
@@ -149,6 +150,7 @@ export class PagosRecurrentesService {
     const like = `%${(texto || '').trim()}%`;
     return this.movimientosRepo.query(
       `SELECT m.id, m.concepto, m.razon_social, m.rfc, m.gran_total,
+              m.importe_sin_iva,
               DATE_FORMAT(m.fecha_factura, '%Y-%m-%d') AS fecha_factura,
               DATE_FORMAT(m.fecha_pago, '%Y-%m-%d') AS fecha_pago
          FROM movimientos_financieros m
@@ -178,6 +180,7 @@ export class PagosRecurrentesService {
     // comparación con hoy es lexicográfica y no pasa por new Date().
     const movimientos: MovimientoMes[] = await this.movimientosRepo.query(
       `SELECT m.id, m.concepto, m.razon_social, m.gran_total,
+              m.importe_sin_iva,
               DATE_FORMAT(m.fecha_pago, '%Y-%m-%d') AS fecha_pago
          FROM movimientos_financieros m
         WHERE m.tipo_movimiento_id = '2'
@@ -240,7 +243,7 @@ export class PagosRecurrentesService {
         movimiento_id: mov.id,
         concepto: mov.concepto,
         beneficiario: mov.razon_social,
-        fiscal: Number(mov.gran_total) || 0,
+        fiscal: Number(mov.importe_sin_iva) || 0,
         no_fiscal: 0,
         fecha_pago: mov.fecha_pago ?? 'Por definir',
         pagado,
