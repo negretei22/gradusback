@@ -51,6 +51,12 @@ export class PagosRecurrentesController {
     return this.pagosService.create(payload);
   }
 
+  @Put(':id/pagado')
+  @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
+  setPagado(@Param('id', ParseIntPipe) id: number, @Body() payload: any) {
+    return this.pagosService.setPagado(id, payload);
+  }
+
   @Put(':id')
   @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
   update(@Param('id', ParseIntPipe) id: number, @Body() payload: any) {

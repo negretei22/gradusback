@@ -33,6 +33,7 @@ import { TipoServicio } from './servicios/tipo-servicio.entity';
 import { MovimientoFinancieroPago } from './finanzas/movimiento-financiero-pago.entity';
 import { PagoRecurrente } from './pagos-recurrentes/pago-recurrente.entity';
 import { PagoRecurrenteFactura } from './pagos-recurrentes/pago-recurrente-factura.entity';
+import { PagoRecurrentePago } from './pagos-recurrentes/pago-recurrente-pago.entity';
 
 
 
@@ -92,7 +93,7 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
         Procedimiento, MovimientoCajaChica, Modulo, Role,
-        Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente, PagoRecurrenteFactura
+        Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente, PagoRecurrenteFactura, PagoRecurrentePago
       ],
       synchronize: true,
     }),

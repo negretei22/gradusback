@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PagoRecurrente } from './pago-recurrente.entity';
 import { PagoRecurrenteFactura } from './pago-recurrente-factura.entity';
+import { PagoRecurrentePago } from './pago-recurrente-pago.entity';
 import { MovimientoFinanciero } from '../finanzas/movimientos_financieros.entity';
 
 // Misma fecha efectiva que FinanzasService.findMovimientos: fecha_factura,
@@ -61,6 +62,8 @@ export class PagosRecurrentesService {
     private readonly pagosRepo: Repository<PagoRecurrente>,
     @InjectRepository(PagoRecurrenteFactura)
     private readonly facturasRepo: Repository<PagoRecurrenteFactura>,
+    @InjectRepository(PagoRecurrentePago)
+    private readonly pagadosRepo: Repository<PagoRecurrentePago>,
     @InjectRepository(MovimientoFinanciero)
     private readonly movimientosRepo: Repository<MovimientoFinanciero>,
   ) {}
@@ -192,7 +195,7 @@ export class PagosRecurrentesService {
   async findAll() {
     const pagos = await this.pagosRepo.find({
       where: { activo: 1 },
-      order: { concepto: 'ASC' },
+      order: { id: 'ASC' },
     });
     const mapa = await this.cargarFacturas(pagos.map((p) => p.id));
     return pagos.map((p) => ({ ...p, facturas: mapa.get(p.id) ?? [] }));
@@ -239,6 +242,53 @@ export class PagosRecurrentesService {
     pago.activo = 0;
     await this.pagosRepo.save(pago);
     return { ok: true };
+  }
+
+  // ---------- Pagado manual del reporte (v5) ----------
+
+  // UPSERT del override de pagado para un pago recurrente en un mes: si
+  // existe el renglón (pago_recurrente_id, anio, mes) lo actualiza, si no
+  // lo crea. El override siempre se guarda (true -> 1, false -> 0),
+  // nunca se borra: el reporte lo prefiere sobre el pagado derivado.
+  async setPagado(
+    id: number,
+    payload: any,
+  ): Promise<{ ok: boolean; pagado: boolean }> {
+    const pago = await this.buscarPago(id);
+    const anio = Number(payload.anio);
+    const mes = Number(payload.mes);
+    if (!Number.isInteger(anio) || anio < 1900 || anio > 2100) {
+      throw new BadRequestException('Año inválido');
+    }
+    if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
+      throw new BadRequestException('Mes inválido (1-12)');
+    }
+    if (
+      payload.pagado !== true &&
+      payload.pagado !== false &&
+      payload.pagado !== 1 &&
+      payload.pagado !== 0
+    ) {
+      throw new BadRequestException('El campo pagado debe ser booleano');
+    }
+    const valor = payload.pagado ? 1 : 0;
+    const existente = await this.pagadosRepo.findOne({
+      where: { pago_recurrente_id: pago.id, anio, mes },
+    });
+    if (existente) {
+      existente.pagado = valor;
+      await this.pagadosRepo.save(existente);
+    } else {
+      await this.pagadosRepo.save(
+        this.pagadosRepo.create({
+          pago_recurrente_id: pago.id,
+          anio,
+          mes,
+          pagado: valor,
+        }),
+      );
+    }
+    return { ok: true, pagado: valor === 1 };
   }
 
   // ---------- Buscar facturas (alta desde un movimiento) ----------
@@ -302,6 +352,15 @@ export class PagosRecurrentesService {
     const consumidos = new Set<number>();
     const filas: any[] = [];
 
+    // Overrides manuales de pagado (v5) para este (anio, mes): mapa
+    // pago_recurrente_id -> pagado. Si existe, manda sobre el derivado.
+    const overrides = new Map<number, boolean>();
+    const renglonesPagado: PagoRecurrentePago[] =
+      await this.pagadosRepo.find({ where: { anio, mes } });
+    for (const r of renglonesPagado) {
+      overrides.set(r.pago_recurrente_id, r.pagado === 1);
+    }
+
     const casaCon = (rec: PagoRecurrente, mov: MovimientoMes): boolean => {
       const ligadas = facturasPorPago.get(rec.id) ?? [];
       if (ligadas.length > 0) {
@@ -334,18 +393,26 @@ export class PagosRecurrentesService {
           ? `${anio}-${mesPad}-${String(rec.dia_pago).padStart(2, '0')}`
           : 'Por definir';
 
-      // Pagado: hay al menos un casado Y todos tienen fecha_pago <= hoy.
-      const pagado =
+      // Pagado derivado: hay al menos un casado Y todos tienen fecha_pago <= hoy.
+      const pagadoDerivado =
         casados.length > 0 && casados.every((m) => estaPagado(m));
 
+      // Override manual (v5): si existe renglón para este pago en este
+      // (anio, mes), ese valor MANDA sobre el derivado.
+      const pagado = overrides.has(rec.id)
+        ? overrides.get(rec.id)!
+        : pagadoDerivado;
+
       // Fecha mostrada: la fecha_pago máxima entre los casados cuando está
-      // pagado; si no, la programada.
-      const fechaMaxima = pagado
-        ? casados.reduce(
-            (max, m) => (m.fecha_pago! > max ? m.fecha_pago! : max),
-            casados[0].fecha_pago!,
-          )
-        : null;
+      // pagado; si no, la programada. Con override en true y sin casados
+      // no hay fecha máxima: se muestra la programada.
+      const fechaMaxima =
+        pagado && casados.length > 0
+          ? casados.reduce(
+              (max, m) => (m.fecha_pago! > max ? m.fecha_pago! : max),
+              casados[0].fecha_pago!,
+            )
+          : null;
 
       // Monto de las facturas del mes: con monto_factura=1, la SUMA del
       // importe_sin_iva de los movimientos casados; si aún no hay casados,
@@ -360,6 +427,7 @@ export class PagosRecurrentesService {
       filas.push({
         origen: 'recurrente',
         id: rec.id,
+        pago_recurrente_id: rec.id,
         concepto: rec.concepto,
         beneficiario: rec.beneficiario,
         fiscal,
