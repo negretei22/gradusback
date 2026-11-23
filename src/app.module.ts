@@ -31,6 +31,7 @@ import { MovimientoCajaChica } from './caja-chica/movimientos_caja_chica.entity'
 import { Servicio } from './servicios/servicio.entity';
 import { TipoServicio } from './servicios/tipo-servicio.entity';
 import { MovimientoFinancieroPago } from './finanzas/movimiento-financiero-pago.entity';
+import { PagoRecurrente } from './pagos-recurrentes/pago-recurrente.entity';
 
 
 
@@ -62,6 +63,7 @@ import { Modulo } from './modulos/modulos.entity';
 import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
 import { BancosCajaChicaModule } from './bancos-caja-chica/bancos-caja-chica.module';
+import { PagosRecurrentesModule } from './pagos-recurrentes/pagos-recurrentes.module';
 import { ServicioService } from './servicios/servicios.service';
 import { ConciliacionController } from './conciliacion/conciliacion.controller';
 
@@ -89,7 +91,7 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
         Procedimiento, MovimientoCajaChica, Modulo, Role,
-        Servicio,TipoServicio,MovimientoFinancieroPago
+        Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente
       ],
       synchronize: true,
     }),
@@ -105,7 +107,8 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
     RolesModule,
     ServicioModule,
     BancosCajaChicaModule,
-    ConciliacionModule
+    ConciliacionModule,
+    PagosRecurrentesModule
     
   ],
   controllers: [AppController],
