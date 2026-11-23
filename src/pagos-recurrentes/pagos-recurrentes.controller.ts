@@ -51,6 +51,18 @@ export class PagosRecurrentesController {
     return this.pagosService.create(payload);
   }
 
+  @Put('seleccion')
+  @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
+  setSeleccion(@Body() payload: any) {
+    return this.pagosService.setSeleccion(payload);
+  }
+
+  @Put('seleccion-mes')
+  @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
+  setSeleccionMes(@Body() payload: any) {
+    return this.pagosService.setSeleccionMes(payload);
+  }
+
   @Put(':id/pagado')
   @Roles(UserRole.ADMIN, UserRole.SUPERADMIN)
   setPagado(@Param('id', ParseIntPipe) id: number, @Body() payload: any) {
