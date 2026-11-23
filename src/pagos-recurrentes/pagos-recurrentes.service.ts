@@ -478,33 +478,25 @@ export class PagosRecurrentesService {
       });
     }
 
-    // Orden (v8): primero las filas de recurrente, por pago_recurrente_id
-    // ASC y luego por dia_pago ASC (sin día al final); después las extras,
-    // por fecha ASC ('Por definir' al final) y luego por concepto.
+    // Orden (v9): MEZCLADO por fecha: recurrentes y extras intercalados
+    // por fecha_pago ASC ('Por definir' al final). En empate de fecha,
+    // primero las filas de recurrente y luego las de factura; dentro de
+    // recurrentes empatadas, por pago_recurrente_id ASC; dentro de extras
+    // empatadas, por concepto.
     filas.sort((a, b) => {
-      const aRec = a.origen === 'recurrente';
-      const bRec = b.origen === 'recurrente';
-      if (aRec && !bRec) return -1;
-      if (!aRec && bRec) return 1;
-      if (aRec && bRec) {
-        if (a.pago_recurrente_id !== b.pago_recurrente_id) {
-          return a.pago_recurrente_id - b.pago_recurrente_id;
-        }
-        const aSinDia = a.dia_pago === null || a.dia_pago === undefined;
-        const bSinDia = b.dia_pago === null || b.dia_pago === undefined;
-        if (aSinDia && !bSinDia) return 1;
-        if (!aSinDia && bSinDia) return -1;
-        if (!aSinDia && !bSinDia && a.dia_pago !== b.dia_pago) {
-          return a.dia_pago - b.dia_pago;
-        }
-        return (a.concepto || '').localeCompare(b.concepto || '');
-      }
       const aSinFecha = a.fecha_pago === 'Por definir';
       const bSinFecha = b.fecha_pago === 'Por definir';
       if (aSinFecha && !bSinFecha) return 1;
       if (!aSinFecha && bSinFecha) return -1;
       if (!aSinFecha && !bSinFecha && a.fecha_pago !== b.fecha_pago) {
         return a.fecha_pago < b.fecha_pago ? -1 : 1;
+      }
+      const aRec = a.origen === 'recurrente';
+      const bRec = b.origen === 'recurrente';
+      if (aRec && !bRec) return -1;
+      if (!aRec && bRec) return 1;
+      if (aRec && bRec && a.pago_recurrente_id !== b.pago_recurrente_id) {
+        return a.pago_recurrente_id - b.pago_recurrente_id;
       }
       return (a.concepto || '').localeCompare(b.concepto || '');
     });
