@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Servicio } from './servicio.entity';
@@ -12,13 +12,31 @@ interface FotoInfo {
 }
 
 @Injectable()
-export class ServicioService {
+export class ServicioService implements OnModuleInit {
+  // Tipo de servicio que pidió Ivo (no se siembra solo-si-la-tabla-está-vacía:
+  // su tabla puede tener tipos viejos; solo se agrega si no existe ya por nombre)
+  private static readonly TIPOS_SERVICIO_SEMILLA = ['Servicio programado 2000 HRs'];
+
   constructor(
     @InjectRepository(Servicio)
     private servicioRepo: Repository<Servicio>,
     @InjectRepository(TipoServicio)
     private tipoServicioRepo: Repository<TipoServicio>,
   ) { }
+
+  // Siembra "Servicio programado 2000 HRs" la primera vez que arranca el back,
+  // solo si no existe ya una fila con ese nombre (tolerante a mayúsculas/espacios).
+  // No borra filas existentes.
+  async onModuleInit() {
+    const normalizar = (s: string) => (s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+    for (const nombre of ServicioService.TIPOS_SERVICIO_SEMILLA) {
+      const existentes = await this.tipoServicioRepo.find();
+      const yaExiste = existentes.some((t) => normalizar(t.tipo_servicio) === normalizar(nombre));
+      if (!yaExiste) {
+        await this.tipoServicioRepo.save({ tipo_servicio: nombre });
+      }
+    }
+  }
 
   // Catálogo de tipos de servicio (lo lee el select del formulario)
   getTiposServicio(): Promise<TipoServicio[]> {
