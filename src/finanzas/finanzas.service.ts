@@ -213,16 +213,34 @@ FROM movimientos_financieros m
             .getRawMany();
     }
 
-    async buscarConceptosPorRfc(rfc: string, texto: string): Promise<MovimientoFinanciero[]> {
+    async buscarConceptosPorRfc(rfc: string, texto: string): Promise<any[]> {
+        // Últimos movimientos del RFC, más recientes primero.
+        // Fecha efectiva: fecha_factura, salvo centinela ('1899-11-30' / '0000-00-00'),
+        // en cuyo caso se usa fecha_pago (igual que en findMovimientos).
         const query = this.movimientoFinancieroRepo
             .createQueryBuilder('mf')
-            .select('mf.concepto', 'concepto')
+            .select('mf.id', 'id')
+            .addSelect('mf.concepto', 'concepto')
+            .addSelect('mf.fecha_factura', 'fecha_factura')
+            .addSelect('mf.fecha_pago', 'fecha_pago')
+            .addSelect('mf.folio_fiscal', 'folio_fiscal')
+            .addSelect('mf.importe_sin_iva', 'importe_sin_iva')
+            .addSelect('mf.gran_total', 'gran_total')
+            .addSelect(
+                `CASE WHEN mf.fecha_factura IN ('1899-11-30', '0000-00-00') THEN mf.fecha_pago ELSE mf.fecha_factura END`,
+                'fecha_efectiva',
+            )
             .where('mf.rfc = :rfc', { rfc });
 
         if (texto) {
             query.andWhere('mf.concepto LIKE :texto', { texto: `%${texto}%` });
         }
-        return query.groupBy('mf.concepto').limit(10).getRawMany();
+
+        return query
+            .orderBy('fecha_efectiva', 'DESC')
+            .addOrderBy('mf.id', 'DESC')
+            .limit(20)
+            .getRawMany();
     }
 
     async deleteMovimiento(id: number) {
