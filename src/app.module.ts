@@ -27,6 +27,7 @@ import { TiposMaquinaria } from './maquinaria/tipos-maquinaria.entity';
 import { MovimientoFinanciero } from './finanzas/movimientos_financieros.entity';
 import { CategoriaFinanciera } from './finanzas/categorias_financieras.entity';
 import { MetodoPago } from './finanzas/metodos_pago.entity';
+import { DondeAplica } from './finanzas/donde-aplica.entity';
 import { Procedimiento } from './procedimientos/procedimientos.entity';
 import { MovimientoCajaChica } from './caja-chica/movimientos_caja_chica.entity';
 import { Servicio } from './servicios/servicio.entity';
@@ -98,7 +99,7 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
         User, Role, Licitacion, Contrato, CategoriaContrato, Estados,
         Municipios, Colonias, EmpresasParticipantes, Contratantes,
         Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria, TiposMaquinaria,
-        MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
+        MovimientoFinanciero, CategoriaFinanciera, MetodoPago, DondeAplica,
         Procedimiento, MovimientoCajaChica, Modulo, Role,
         Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente, PagoRecurrenteFactura, PagoRecurrentePago, PagoRecurrenteSeleccion, CobroRecurrente, CobroRecurrenteFactura, CobroRecurrentePago, CobroRecurrenteSeleccion
       ],

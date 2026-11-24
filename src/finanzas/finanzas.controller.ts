@@ -95,6 +95,11 @@ export class FinanzasController {
     return this.finanzasService.getMetodosPago();
   }
 
+  @Get('donde-aplica')
+  getDondeAplica() {
+    return this.finanzasService.getDondeAplica();
+  }
+
   @Get('saldo/:anio/:mes')
   async getSaldo(@Param('anio') anio: number, @Param('mes') mes: number) {
     return await this.finanzasService.getSaldo(anio, mes);
