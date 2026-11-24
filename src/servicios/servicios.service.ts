@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Servicio } from './servicio.entity';
+import { TipoServicio } from './tipo-servicio.entity';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,7 +16,14 @@ export class ServicioService {
   constructor(
     @InjectRepository(Servicio)
     private servicioRepo: Repository<Servicio>,
+    @InjectRepository(TipoServicio)
+    private tipoServicioRepo: Repository<TipoServicio>,
   ) { }
+
+  // Catálogo de tipos de servicio (lo lee el select del formulario)
+  getTiposServicio(): Promise<TipoServicio[]> {
+    return this.tipoServicioRepo.find({ order: { tipo_servicio: 'ASC' } });
+  }
 
   async create(body: any, files: Express.Multer.File[]) {
     const codigo = await this.generarCodigo();
@@ -24,6 +32,7 @@ export class ServicioService {
     const servicio = this.servicioRepo.create({
       codigo,
       id_activo: body.id_activo,
+      id_tipo_servicio: body.id_tipo_servicio ? Number(body.id_tipo_servicio) : null,
       fecha_servicio: body.fecha_servicio,
       servicio_programado: body.servicio_programado ?? null,
       unidad_servicio: body.unidad_servicio ?? null,
@@ -51,6 +60,7 @@ export class ServicioService {
 
     servicio.fotos = [...existentes, ...fotosNuevas];
     servicio.id_activo = body.id_activo;
+    servicio.id_tipo_servicio = body.id_tipo_servicio ? Number(body.id_tipo_servicio) : null;
     servicio.fecha_servicio = body.fecha_servicio;
     servicio.servicio_programado = body.servicio_programado ?? null;
     servicio.unidad_servicio = body.unidad_servicio ?? null;
