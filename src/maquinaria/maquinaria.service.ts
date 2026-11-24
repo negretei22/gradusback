@@ -85,9 +85,8 @@ export class MaquinariaService implements OnModuleInit {
         // Una sola consulta: por cada activo, el servicio con la fecha máxima y, entre esos, el id mayor.
         const ultimos: any[] = await this.maquinariaRepo.query(`
             SELECT s.id_activo, s.fecha_servicio, s.responsable, s.unidad_servicio,
-                   s.horometro_servicio, s.kilometraje, ts.tipo_servicio
+                   s.horometro_servicio, s.kilometraje, s.servicio_programado, s.comentarios
             FROM servicio s
-            LEFT JOIN tipo_servicio ts ON ts.id_tipo_servicio = s.id_tipo_servicio
             WHERE s.id_servicio IN (
                 SELECT MAX(s2.id_servicio)
                 FROM servicio s2
@@ -104,7 +103,8 @@ export class MaquinariaService implements OnModuleInit {
             const u = porActivo.get(Number(c.id_maquinaria));
             return {
                 ...c,
-                ultimo_tipo_servicio: u?.tipo_servicio ?? null,
+                ultimo_servicio_programado: u?.servicio_programado ?? null,
+                ultimo_comentarios: u?.comentarios ?? null,
                 ultimo_fecha_servicio: u?.fecha_servicio ?? null,
                 ultimo_unidad_servicio: u?.unidad_servicio ?? null,
                 ultimo_horometro_servicio: u?.horometro_servicio ?? null,

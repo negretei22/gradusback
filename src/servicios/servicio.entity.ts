@@ -9,10 +9,6 @@ export class Servicio {
   @Column({ length: 20, unique: true })
   codigo: string;
 
-  // Tipo de servicio (catálogo tipo_servicio; nullable: los servicios viejos no tienen tipo)
-  @Column({ type: 'int', nullable: true })
-  id_tipo_servicio: number | null;
-
   @Column('date')
   fecha_servicio: string;
 

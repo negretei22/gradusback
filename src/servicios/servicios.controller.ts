@@ -14,11 +14,6 @@ import { UserRole } from 'src/shared/enums/user-role.enum';
 export class ServicioController {
   constructor(private readonly servicioService: ServicioService) { }
 
-  @Get('tipos')
-  getTipos() {
-    return this.servicioService.getTiposServicio();
-  }
-
   @Get()
   getAll() {
     console.log("hola")
