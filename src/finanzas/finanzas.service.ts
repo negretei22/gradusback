@@ -1,9 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Repository } from 'typeorm/repository/Repository';
 import { MovimientoFinanciero } from './movimientos_financieros.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CategoriaFinanciera } from './categorias_financieras.entity';
 import { MetodoPago } from './metodos_pago.entity';
+import { DondeAplica } from './donde-aplica.entity';
 import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entity';
 import { MovimientoFinancieroPago } from './movimiento-financiero-pago.entity';
 import { renameSync, unlinkSync, existsSync } from 'fs';
@@ -21,7 +22,18 @@ const LABELS_MAP: { [key: string]: string } = {
 const CAMPOS_ARCHIVO_PERMITIDOS = ['archivo_factura', 'archivo_pago'];
 
 @Injectable()
-export class FinanzasService {
+export class FinanzasService implements OnModuleInit {
+
+    // Catálogo "Dónde se aplica": ids 1 y 2 fijos (Puerto Peñasco y Hermosillo,
+    // por los datos ya guardados y el módulo obra-puerto-penasco que los interpreta);
+    // los demás en orden alfabético. Se siembra solo si la tabla está vacía.
+    private static readonly DONDE_APLICA_SEMILLA = [
+        'PUERTO PEÑASCO',
+        'HERMOSILLO',
+        'EZCÁRCEGA, CAMPECHE',
+        'IMPERIAL DEL GOLFO',
+        'ZARAGOZA, S.L.P.',
+    ];
 
     constructor(
         @InjectRepository(MovimientoFinanciero)
@@ -34,7 +46,22 @@ export class FinanzasService {
         private readonly movimientoCajaChicaRepo: Repository<MovimientoCajaChica>,
         @InjectRepository(MovimientoFinancieroPago)
         private pagosRepo: Repository<MovimientoFinancieroPago>,
+        @InjectRepository(DondeAplica)
+        private dondeAplicaRepo: Repository<DondeAplica>,
     ) { }
+
+    async onModuleInit() {
+        const conteo = await this.dondeAplicaRepo.count();
+        if (conteo === 0) {
+            await this.dondeAplicaRepo.save(
+                FinanzasService.DONDE_APLICA_SEMILLA.map((nombre) => ({ nombre })),
+            );
+        }
+    }
+
+    getDondeAplica(): Promise<DondeAplica[]> {
+        return this.dondeAplicaRepo.find({ order: { nombre: 'ASC' } });
+    }
 
 
     // Parsea y valida las partes de pago. Devuelve [] si no es pago dividido.
