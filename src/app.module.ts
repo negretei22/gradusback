@@ -23,6 +23,7 @@ import { Marcas } from './maquinaria/marcas.entity';
 import { Modelos } from './maquinaria/modelos.entity';
 import { ArrendadoresMaquinaria } from './maquinaria/arrendadores_maquinaria.entity';
 import { Maquinaria } from './maquinaria/maquinaria.entity';
+import { TiposMaquinaria } from './maquinaria/tipos-maquinaria.entity';
 import { MovimientoFinanciero } from './finanzas/movimientos_financieros.entity';
 import { CategoriaFinanciera } from './finanzas/categorias_financieras.entity';
 import { MetodoPago } from './finanzas/metodos_pago.entity';
@@ -96,7 +97,7 @@ import { ConciliacionController } from './conciliacion/conciliacion.controller';
       entities: [
         User, Role, Licitacion, Contrato, CategoriaContrato, Estados,
         Municipios, Colonias, EmpresasParticipantes, Contratantes,
-        Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria,
+        Marcas, Modelos, ArrendadoresMaquinaria, Maquinaria, TiposMaquinaria,
         MovimientoFinanciero, CategoriaFinanciera, MetodoPago,
         Procedimiento, MovimientoCajaChica, Modulo, Role,
         Servicio,TipoServicio,MovimientoFinancieroPago, PagoRecurrente, PagoRecurrenteFactura, PagoRecurrentePago, PagoRecurrenteSeleccion, CobroRecurrente, CobroRecurrenteFactura, CobroRecurrentePago, CobroRecurrenteSeleccion

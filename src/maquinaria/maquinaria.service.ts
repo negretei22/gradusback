@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Marcas } from './marcas.entity';
 import { Modelos } from './modelos.entity';
 import { ArrendadoresMaquinaria } from './arrendadores_maquinaria.entity';
 import { Maquinaria } from './maquinaria.entity';
+import { TiposMaquinaria } from './tipos-maquinaria.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm/repository/Repository';
 import * as fs from 'fs';
@@ -11,7 +12,18 @@ import { join } from 'path';
 
 
 @Injectable()
-export class MaquinariaService {
+export class MaquinariaService implements OnModuleInit {
+    // Catálogo de tipos de maquinaria (orden pedido por Ivo)
+    private static readonly TIPOS_MAQUINARIA_SEMILLA = [
+        'AUTOTANQUE',
+        'EXCAVADORA',
+        'MOTOCONFORMADORA',
+        'PIPA',
+        'TRACTOCAMION',
+        'PICKUP',
+        'VIBROCOMPACTADOR',
+    ];
+
     constructor(
         @InjectRepository(Marcas)
         private marcasRepo: Repository<Marcas>,
@@ -21,8 +33,28 @@ export class MaquinariaService {
         private arrendadoresMaquinariaRepo: Repository<ArrendadoresMaquinaria>,
         @InjectRepository(Maquinaria)
         private maquinariaRepo: Repository<Maquinaria>,
+        @InjectRepository(TiposMaquinaria)
+        private tiposMaquinariaRepo: Repository<TiposMaquinaria>,
 
     ) { }
+
+    // Siembra el catálogo de tipos de maquinaria la primera vez que arranca el back
+    async onModuleInit() {
+        const conteo = await this.tiposMaquinariaRepo.count();
+        if (conteo === 0) {
+            await this.tiposMaquinariaRepo.save(
+                MaquinariaService.TIPOS_MAQUINARIA_SEMILLA.map((nombre) => ({ nombre })),
+            );
+        }
+    }
+
+    getTiposMaquinaria(): Promise<TiposMaquinaria[]> {
+        return this.tiposMaquinariaRepo.find({
+            order: {
+                id_tipo_maquinaria: 'ASC'
+            }
+        });
+    }
 
 
     findMaquinaria() {
@@ -30,11 +62,13 @@ export class MaquinariaService {
             .createQueryBuilder('a')
             .leftJoin('marcas', 'b', 'a.id_marca = b.id_marca')
             .leftJoin('modelos', 'm', 'a.id_modelo = m.id_modelo')
+            .leftJoin('tipos_maquinaria', 't', 'a.tipo_maquinaria_id = t.id_tipo_maquinaria')
 
             .select([
                 'a.*',
                 'b.marca', // cambia nombre por tu campo real
                 'm.modelo',
+                't.nombre AS tipo_maquinaria',
 
                 `CASE 
         WHEN a.id_tipo_de_adquisicion = 1 THEN 'PROPIO'
@@ -73,6 +107,7 @@ export class MaquinariaService {
         if (payload.fecha_inicio_poliza === '') payload.fecha_inicio_poliza = null;
         if (payload.fecha_fin_poliza === '') payload.fecha_fin_poliza = null;
         if (payload.documento_poliza === '') payload.documento_poliza = null;
+        this.normalizarTipoMaquinaria(payload);
         //  console.log(payload)
         const existe = await this.maquinariaRepo.findOne({
             where: { numero_serie: payload.numero_serie }
@@ -98,6 +133,7 @@ export class MaquinariaService {
         if (data.fecha_inicio_poliza === '') data.fecha_inicio_poliza = null;
         if (data.fecha_fin_poliza === '') data.fecha_fin_poliza = null;
         if (data.documento_poliza === '') data.documento_poliza = null;
+        this.normalizarTipoMaquinaria(data);
 
         const maquinaria = await this.maquinariaRepo.findOne({
             where: { id_maquinaria }
@@ -234,6 +270,20 @@ export class MaquinariaService {
         }
 
         return await this.maquinariaRepo.remove(maquinaria);
+    }
+
+    // ===== Normaliza los campos nuevos de tipo de maquinaria (llegan como strings del FormData) =====
+    private normalizarTipoMaquinaria(data: any) {
+        if ('tipo_maquinaria_id' in data) {
+            const v = data.tipo_maquinaria_id;
+            data.tipo_maquinaria_id = (v === '' || v === null || v === undefined) ? null : Number(v);
+        }
+        if ('placas' in data) {
+            data.placas = String(data.placas ?? '').trim().toUpperCase() || null;
+        }
+        if ('especificacion' in data) {
+            data.especificacion = String(data.especificacion ?? '').trim().toUpperCase() || null;
+        }
     }
 
     // ===== Helper: parsea documentos de forma segura, soporta JSON nuevo y string viejo por comas =====

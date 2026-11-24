@@ -24,6 +24,15 @@ export class Maquinaria {
   @Column({ type: 'int' })
   anio: number;
 
+  @Column({ type: 'int', nullable: true })
+  tipo_maquinaria_id: number | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  placas: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  especificacion: string | null;
+
   @Column({ type: 'text' })
   descripcion: number;
 
