@@ -33,6 +33,10 @@ export class Maquinaria {
   @Column({ type: 'varchar', length: 100, nullable: true })
   especificacion: string | null;
 
+  // Ubicación actual de la maquinaria (texto libre, ej. "Zaragoza, S.L.P.")
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  ubicacion: string | null;
+
   @Column({ type: 'text' })
   descripcion: number;
 

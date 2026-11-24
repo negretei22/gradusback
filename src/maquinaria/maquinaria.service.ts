@@ -57,8 +57,8 @@ export class MaquinariaService implements OnModuleInit {
     }
 
 
-    findMaquinaria() {
-        return this.maquinariaRepo
+    async findMaquinaria() {
+        const lista = await this.maquinariaRepo
             .createQueryBuilder('a')
             .leftJoin('marcas', 'b', 'a.id_marca = b.id_marca')
             .leftJoin('modelos', 'm', 'a.id_modelo = m.id_modelo')
@@ -80,6 +80,38 @@ export class MaquinariaService implements OnModuleInit {
                 `IF(a.id_tipo_de_adquisicion < 3, a.valor_compra, a.monto_renta_mensual) AS monto`
             ])
             .getRawMany();
+
+        // ===== ÚLTIMO SERVICIO POR ACTIVO (el más reciente por fecha; desempate: id mayor) =====
+        // Una sola consulta: por cada activo, el servicio con la fecha máxima y, entre esos, el id mayor.
+        const ultimos: any[] = await this.maquinariaRepo.query(`
+            SELECT s.id_activo, s.fecha_servicio, s.responsable, s.unidad_servicio,
+                   s.horometro_servicio, s.kilometraje, ts.tipo_servicio
+            FROM servicio s
+            LEFT JOIN tipo_servicio ts ON ts.id_tipo_servicio = s.id_tipo_servicio
+            WHERE s.id_servicio IN (
+                SELECT MAX(s2.id_servicio)
+                FROM servicio s2
+                WHERE s2.fecha_servicio = (
+                    SELECT MAX(s3.fecha_servicio) FROM servicio s3 WHERE s3.id_activo = s2.id_activo
+                )
+                GROUP BY s2.id_activo
+            )
+        `);
+        const porActivo = new Map<number, any>();
+        for (const u of ultimos) porActivo.set(Number(u.id_activo), u);
+
+        return lista.map((c: any) => {
+            const u = porActivo.get(Number(c.id_maquinaria));
+            return {
+                ...c,
+                ultimo_tipo_servicio: u?.tipo_servicio ?? null,
+                ultimo_fecha_servicio: u?.fecha_servicio ?? null,
+                ultimo_unidad_servicio: u?.unidad_servicio ?? null,
+                ultimo_horometro_servicio: u?.horometro_servicio ?? null,
+                ultimo_kilometraje: u?.kilometraje ?? null,
+                ultimo_responsable: u?.responsable ?? null,
+            };
+        });
     }
 
     getMarcas(): Promise<Marcas[]> {
@@ -283,6 +315,10 @@ export class MaquinariaService implements OnModuleInit {
         }
         if ('especificacion' in data) {
             data.especificacion = String(data.especificacion ?? '').trim().toUpperCase() || null;
+        }
+        // Ubicación: texto libre, se conserva como se escribió (solo trim; vacío → null)
+        if ('ubicacion' in data) {
+            data.ubicacion = String(data.ubicacion ?? '').trim() || null;
         }
     }
 
