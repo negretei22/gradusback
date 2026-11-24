@@ -69,14 +69,27 @@ function archivosFactura(
   }
 }
 
-// "518_87.pdf" -> "F87": parte después del último "_" sin la extensión,
-// con prefijo "F". Si el nombre no sigue ese patrón, el nombre sin
-// extensión tal cual.
+// "518_87.pdf" -> "F87"; "518_F91 - HEIL.pdf" -> "F91";
+// "F91 - HEIL.pdf" -> "F91" (v17): se toma solo la parte antes del
+// primer " - " (el sufijo es el nombre del bien) y no se duplica la
+// "F" cuando el folio ya la trae. Si el nombre no sigue ese patrón,
+// el nombre sin extensión tal cual.
 function folioDeArchivo(nombre: string): string {
   const base = nombre.trim().replace(/\.[^.]*$/, '');
   const i = base.lastIndexOf('_');
-  if (i === -1 || i === base.length - 1) return base;
-  return `F${base.slice(i + 1)}`;
+  if (i === -1 || i === base.length - 1) {
+    // Sin prefijo {movimiento_id}_: el nombre tal cual (v14).
+    const parte = base.split(/\s+-\s+/)[0].trim();
+    if (/^[fF]\d/.test(parte)) return `F${parte.slice(1)}`;
+    return parte;
+  }
+  const parte = base
+    .slice(i + 1)
+    .split(/\s+-\s+/)[0]
+    .trim();
+  if (/^[fF]\d/.test(parte)) return `F${parte.slice(1)}`;
+  if (/^[fF]/.test(parte)) return parte; // "FF93" se respeta
+  return `F${parte}`;
 }
 
 // Une los folios derivados de uno o varios archivo_factura, en orden y
