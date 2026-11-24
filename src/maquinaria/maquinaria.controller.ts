@@ -3,6 +3,7 @@ import { MaquinariaService } from './maquinaria.service';
 import { Marcas } from './marcas.entity';
 import { Modelos } from './modelos.entity';
 import { ArrendadoresMaquinaria } from './arrendadores_maquinaria.entity';
+import { TiposMaquinaria } from './tipos-maquinaria.entity';
 import { UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -34,6 +35,11 @@ const storageMaquinaria = diskStorage({
 export class MaquinariaController {
 
   constructor(private readonly maquinariaService: MaquinariaService) { }
+
+  @Get('tipos-maquinaria')
+  getTiposMaquinaria(): Promise<TiposMaquinaria[]> {
+    return this.maquinariaService.getTiposMaquinaria();
+  }
 
   @Get()
   findContratos() {
