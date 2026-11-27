@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { CajaChicaService } from '../caja-chica/caja_chica.service';
@@ -66,6 +67,14 @@ export class BancosCajaChicaService {
         } catch (e: any) {
             console.error('No se pudo refrescar la hoja de Saldos en Drive:', e?.message || e);
         }
+    }
+
+    // Cada 5 horas (00:00, 05:00, 10:00, 15:00 y 20:00) la hoja de Saldos
+    // se reescribe sola con el mes actual, aunque nadie abra el sistema
+    // (mientras el back esté prendido). Reusa el refresco silencioso.
+    @Cron('0 */5 * * *')
+    async refrescarDriveProgramado() {
+        await this.refrescarDrive();
     }
 
 
