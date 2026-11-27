@@ -29,7 +29,10 @@ export class GoogleSheetsService {
         'Falta GOOGLE_SERVICE_ACCOUNT_KEY_FILE en el .env del back: la ruta del .json de la cuenta de servicio.',
       );
     }
-    const auth = new google.auth.GoogleAuth({
+    // JWT directo con el .json: GoogleAuth con keyFile/keyFilename marca
+    // el aviso "The `keyFilename` option is deprecated" (google-auth-library
+    // 11, que trae googleapis 190), así que no se usa GoogleAuth aquí.
+    const auth = new google.auth.JWT({
       keyFile,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
