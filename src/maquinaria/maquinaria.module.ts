@@ -15,6 +15,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     TypeOrmModule.forFeature([Marcas, Modelos,ArrendadoresMaquinaria, Maquinaria, TiposMaquinaria])
   ],
   controllers: [MaquinariaController],
-  providers: [MaquinariaService, GoogleSheetsService]
+  providers: [MaquinariaService, GoogleSheetsService],
+  // MaquinariaService se exporta para que Finanzas y Servicios puedan
+  // refrescar su archivo de Drive al guardar (sin ciclos: ningún módulo
+  // de maquinaria importa Finanzas ni Servicios).
+  exports: [MaquinariaService, GoogleSheetsService],
 })
 export class MaquinariaModule {}

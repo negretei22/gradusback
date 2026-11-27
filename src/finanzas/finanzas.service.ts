@@ -10,6 +10,7 @@ import { MovimientoFinancieroPago } from './movimiento-financiero-pago.entity';
 import { renameSync, unlinkSync, existsSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { Express } from 'express';
+import { MaquinariaService } from 'src/maquinaria/maquinaria.service';
 
 const LABELS_MAP: { [key: string]: string } = {
     archivo_prefactura: 'Prefactura',
@@ -48,7 +49,23 @@ export class FinanzasService implements OnModuleInit {
         private pagosRepo: Repository<MovimientoFinancieroPago>,
         @InjectRepository(DondeAplica)
         private dondeAplicaRepo: Repository<DondeAplica>,
+        private maquinariaService: MaquinariaService,
     ) { }
+
+    // El activo al que va ligada una factura de egreso de Maquinaria
+    // (categoría 19). Solo entonces el archivo de Leasing se refresca.
+    private activoDeMovimiento(mov: any): number | null {
+        if (!mov) return null;
+        const aplica = Number(mov.tipo_movimiento_id) === 2 && Number(mov.categoria_id) === 19;
+        const id = Number(mov.activo_maquinaria_id);
+        return aplica && id > 0 ? id : null;
+    }
+
+    private async refrescarLeasingSiAplica(mov: any) {
+        if (this.activoDeMovimiento(mov) !== null) {
+            await this.maquinariaService.refrescarDriveArchivo('leasing');
+        }
+    }
 
     async onModuleInit() {
         const conteo = await this.dondeAplicaRepo.count();
@@ -299,6 +316,8 @@ FROM movimientos_financieros m
             }
         }
 
+        await this.refrescarLeasingSiAplica(mov);
+
         return resultado;
     }
 
@@ -438,6 +457,8 @@ FROM movimientos_financieros m
             });
             await this.movimientoCajaChicaRepo.save(cajaChica);
         }
+
+        await this.refrescarLeasingSiAplica(payload);
 
         return guardado;
     }
@@ -583,6 +604,16 @@ FROM movimientos_financieros m
         await this.movimientoFinancieroRepo.update(id, payload);
 
         await this.guardarPagos(id, pagos);
+
+        // Refresca si el movimiento estaba ligado a un activo o si quedó
+        // ligado con la edición (si se quitó el activo, también cambia el
+        // archivo porque ese activo pierde un pago).
+        if (
+            this.activoDeMovimiento(movimiento) !== null ||
+            this.activoDeMovimiento(payload) !== null
+        ) {
+            await this.maquinariaService.refrescarDriveArchivo('leasing');
+        }
 
         return { ok: true };
     }

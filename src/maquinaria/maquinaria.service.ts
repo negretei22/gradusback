@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Marcas } from './marcas.entity';
 import { Modelos } from './modelos.entity';
 import { ArrendadoresMaquinaria } from './arrendadores_maquinaria.entity';
@@ -9,6 +9,13 @@ import { Repository } from 'typeorm/repository/Repository';
 import * as fs from 'fs';
 import { join } from 'path';
 import { GoogleSheetsService } from './google-sheets.service';
+import {
+  ArchivoDrive,
+  PagosActivo,
+  construirPayloadLeasing,
+  construirPayloadSeguros,
+  construirPayloadServicios,
+} from './sheets-archivos';
 
 
 
@@ -58,9 +65,71 @@ export class MaquinariaService implements OnModuleInit {
         });
     }
 
-    // Escribe el reporte de maquinaria en la hoja de Google (Drive)
-    async exportarDrive(payload: any) {
-        return this.googleSheetsService.escribirReporte(payload);
+    // Escribe uno de los 3 archivos de Drive (Leasing, Seguros o Servicios)
+    // con los datos actuales de la base. 'todos' los escribe los 3 en orden.
+    async exportarDriveArchivo(archivo: string) {
+        if (archivo === 'todos') {
+            const resultados: any[] = [];
+            const errores: any[] = [];
+            for (const a of ['leasing', 'seguros', 'servicios'] as ArchivoDrive[]) {
+                try {
+                    resultados.push(await this.exportarDriveArchivo(a));
+                } catch (e: any) {
+                    errores.push({ archivo: a, mensaje: e?.message || 'Error desconocido' });
+                }
+            }
+            if (!resultados.length) {
+                throw new BadRequestException(
+                    'No se pudo escribir ningún archivo en Drive: ' +
+                    errores.map((e) => `${e.archivo}: ${e.mensaje}`).join(' | '),
+                );
+            }
+            return { ok: true, resultados, errores };
+        }
+        if (archivo !== 'leasing' && archivo !== 'seguros' && archivo !== 'servicios') {
+            throw new BadRequestException(`Archivo de Drive desconocido: ${archivo}.`);
+        }
+        const lista = await this.findMaquinaria();
+        let payload;
+        if (archivo === 'seguros') payload = construirPayloadSeguros(lista);
+        else if (archivo === 'servicios') payload = construirPayloadServicios(lista);
+        else payload = construirPayloadLeasing(lista, await this.pagosLeasingPorActivo());
+        return this.googleSheetsService.escribirReporte(archivo, payload);
+    }
+
+    // Refresco silencioso para los auto-sync: si Drive falla, el guardado
+    // en Gradus sí se hace y solo queda el error en el log del back.
+    async refrescarDriveArchivo(archivo: ArchivoDrive) {
+        try {
+            await this.exportarDriveArchivo(archivo);
+        } catch (e: any) {
+            console.error(`No se pudo refrescar la hoja de Drive (${archivo}):`, e?.message || e);
+        }
+    }
+
+    // Por cada activo, lo que suman sus facturas de egreso ligadas
+    // (movimientos_financieros.activo_maquinaria_id).
+    private async pagosLeasingPorActivo(): Promise<Map<number, PagosActivo>> {
+        const filas: any[] = await this.maquinariaRepo.query(`
+            SELECT m.activo_maquinaria_id AS id,
+                   COUNT(*) AS pagos,
+                   COALESCE(MAX(m.numero_pago), 0) AS max_numero,
+                   COALESCE(SUM(m.gran_total), 0) AS total_pagado,
+                   MAX(m.fecha_pago) AS ultimo_pago
+              FROM movimientos_financieros m
+             WHERE m.activo_maquinaria_id IS NOT NULL
+             GROUP BY m.activo_maquinaria_id
+        `);
+        const mapa = new Map<number, PagosActivo>();
+        for (const f of filas) {
+            mapa.set(Number(f.id), {
+                pagos: Number(f.pagos) || 0,
+                maxNumero: Number(f.max_numero) || 0,
+                totalPagado: Number(f.total_pagado) || 0,
+                ultimoPago: f.ultimo_pago ?? null,
+            });
+        }
+        return mapa;
     }
 
 
@@ -157,7 +226,15 @@ export class MaquinariaService implements OnModuleInit {
         }
 
         const contrato = this.maquinariaRepo.create(payload);
-        return await this.maquinariaRepo.save(contrato);
+        const guardado = await this.maquinariaRepo.save(contrato);
+        // El activo nuevo aparece en Seguros y Servicios; en Leasing solo
+        // si es de Leasing (en Activos ya no se auto-sincroniza el Leasing).
+        await this.refrescarDriveArchivo('seguros');
+        await this.refrescarDriveArchivo('servicios');
+        if (Number((guardado as any).id_tipo_de_adquisicion) === 2) {
+            await this.refrescarDriveArchivo('leasing');
+        }
+        return guardado;
     }
 
     async updateMaquinaria(payload: any) {
@@ -224,8 +301,17 @@ export class MaquinariaService implements OnModuleInit {
             }
         }
 
+        // El tipo anterior importa: si era Leasing y ya no, debe salir del
+        // archivo de Leasing; si ahora es Leasing, debe entrar.
+        const tipoAntes = Number(maquinaria.id_tipo_de_adquisicion);
         this.maquinariaRepo.merge(maquinaria, data);
-        return await this.maquinariaRepo.save(maquinaria);
+        const guardado = await this.maquinariaRepo.save(maquinaria);
+        await this.refrescarDriveArchivo('seguros');
+        await this.refrescarDriveArchivo('servicios');
+        if (tipoAntes === 2 || Number(maquinaria.id_tipo_de_adquisicion) === 2) {
+            await this.refrescarDriveArchivo('leasing');
+        }
+        return guardado;
     }
 
     // ===== PÓLIZA DE SEGURO (solo actualiza los datos de la póliza) =====
@@ -267,7 +353,9 @@ export class MaquinariaService implements OnModuleInit {
         if ('costo_poliza' in data) cambios.costo_poliza = (data.costo_poliza || '').trim() || null;
 
         this.maquinariaRepo.merge(maquinaria, cambios);
-        return await this.maquinariaRepo.save(maquinaria);
+        const guardado = await this.maquinariaRepo.save(maquinaria);
+        await this.refrescarDriveArchivo('seguros');
+        return guardado;
     }
 
     async deleteMaquinaria(id_maquinaria: number) {
@@ -308,7 +396,14 @@ export class MaquinariaService implements OnModuleInit {
             }
         }
 
-        return await this.maquinariaRepo.remove(maquinaria);
+        const eraLeasing = Number(maquinaria.id_tipo_de_adquisicion) === 2;
+        const eliminado = await this.maquinariaRepo.remove(maquinaria);
+        await this.refrescarDriveArchivo('seguros');
+        await this.refrescarDriveArchivo('servicios');
+        if (eraLeasing) {
+            await this.refrescarDriveArchivo('leasing');
+        }
+        return eliminado;
     }
 
     // ===== Normaliza los campos nuevos de tipo de maquinaria (llegan como strings del FormData) =====
