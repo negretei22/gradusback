@@ -41,11 +41,15 @@ const GRIS_RENGLON = { red: 0.95, green: 0.95, blue: 0.95 }; // #F2F2F2
 const TEXTO = { red: 0.12, green: 0.12, blue: 0.12 }; // #1F1F1F
 const BLANCO = { red: 1, green: 1, blue: 1 };
 
+// Borde fino: en la API de Sheets el estilo se llama 'SOLID' (línea
+// sólida de 1px, igual que el THIN del Excel). 'THIN' NO existe en el
+// enum de Sheets (NONE, DOTTED, DASHED, SOLID, SOLID_MEDIUM, SOLID_THICK,
+// DOUBLE) y la API rechaza todo el batch con "Invalid value ... THIN".
 const bordeFino = {
-  top: { style: 'THIN', color: GRIS_BORDE },
-  bottom: { style: 'THIN', color: GRIS_BORDE },
-  left: { style: 'THIN', color: GRIS_BORDE },
-  right: { style: 'THIN', color: GRIS_BORDE },
+  top: { style: 'SOLID', color: GRIS_BORDE },
+  bottom: { style: 'SOLID', color: GRIS_BORDE },
+  left: { style: 'SOLID', color: GRIS_BORDE },
+  right: { style: 'SOLID', color: GRIS_BORDE },
 };
 
 const sinBorde = {
