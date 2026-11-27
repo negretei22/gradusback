@@ -96,6 +96,20 @@ export function construirPeticionesSheets(
     },
   });
 
+  // Congelar las primeras 3 columnas (No, Maquinaria/Vehículo, Nombre)
+  // para ver siempre de qué vehículo o maquinaria es cada renglón al
+  // moverse a la derecha. En el Excel descargado no se puede (la librería
+  // xlsx-js-style no escribe el congelado); en la hoja de Drive sí.
+  requests.push({
+    updateSheetProperties: {
+      properties: {
+        sheetId: hojaId,
+        gridProperties: { frozenColumnCount: 3 },
+      },
+      fields: 'gridProperties.frozenColumnCount',
+    },
+  });
+
   // Combinar la fila de títulos por grupo
   payload.grupos.forEach((g) => {
     requests.push({
