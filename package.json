@@ -32,6 +32,7 @@
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "googleapis": "^190.0.0",
     "multer": "^2.5.0",
     "mysql2": "^3.23.3",
     "papaparse": "^5.7.0",
