@@ -43,12 +43,21 @@ export class GoogleSheetsService {
   }
 
   async escribirReporte(archivo: ArchivoDrive, payload: ReporteDrivePayload) {
-    if (!payload || !Array.isArray(payload.headers) || !Array.isArray(payload.rows)) {
-      throw new InternalServerErrorException('El reporte llegó vacío o incompleto.');
-    }
     const sheetId = this.hojas[archivo];
     if (!sheetId) {
       throw new InternalServerErrorException(`Archivo de Drive desconocido: ${archivo}.`);
+    }
+    return this.escribirReporteEn(sheetId, payload, archivo);
+  }
+
+  // Escritura genérica en cualquier hoja por su ID (para módulos con su
+  // propio archivo, como Saldos de Bancos/Caja Chica).
+  async escribirReporteEn(sheetId: string, payload: ReporteDrivePayload, etiqueta = 'Drive') {
+    if (!payload || !Array.isArray(payload.headers) || !Array.isArray(payload.rows)) {
+      throw new InternalServerErrorException('El reporte llegó vacío o incompleto.');
+    }
+    if (!sheetId) {
+      throw new InternalServerErrorException(`Falta el ID de la hoja de Drive (${etiqueta}).`);
     }
     try {
       const sheets = this.cliente();
@@ -79,7 +88,7 @@ export class GoogleSheetsService {
       });
       return {
         ok: true,
-        archivo,
+        archivo: etiqueta,
         hoja: titulo,
         filas: payload.rows.length,
         columnas: payload.headers.length,
@@ -89,7 +98,7 @@ export class GoogleSheetsService {
       const detalle =
         e?.response?.data?.error?.message || e?.message || 'Error desconocido';
       throw new InternalServerErrorException(
-        `No se pudo escribir en la hoja de Drive (${archivo}): ${detalle}. Revisa que la hoja esté compartida con la cuenta de servicio como Editor.`,
+        `No se pudo escribir en la hoja de Drive (${etiqueta}): ${detalle}. Revisa que la hoja esté compartida con la cuenta de servicio como Editor.`,
       );
     }
   }

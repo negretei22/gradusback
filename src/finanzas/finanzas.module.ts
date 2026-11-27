@@ -9,6 +9,7 @@ import { MovimientoCajaChica } from 'src/caja-chica/movimientos_caja_chica.entit
 import { MovimientoFinancieroPago } from './movimiento-financiero-pago.entity';
 import { DondeAplica } from './donde-aplica.entity';
 import { MaquinariaModule } from 'src/maquinaria/maquinaria.module';
+import { BancosCajaChicaModule } from 'src/bancos-caja-chica/bancos-caja-chica.module';
 
 
 @Module({
@@ -17,6 +18,9 @@ import { MaquinariaModule } from 'src/maquinaria/maquinaria.module';
       // Para refrescar el archivo de Leasing en Drive al capturar una
       // factura ligada a un activo (sin ciclos: Maquinaria no importa Finanzas).
       MaquinariaModule,
+      // Para refrescar la hoja de Saldos en Drive al capturar una factura
+      // de banco (sin ciclos: Bancos no importa Finanzas).
+      BancosCajaChicaModule,
     ],
   controllers: [FinanzasController],
   providers: [FinanzasService]
