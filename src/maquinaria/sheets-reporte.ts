@@ -65,6 +65,8 @@ export function construirPeticionesSheets(
 ): { valores: (string | number)[][]; requests: sheets_v4.Schema$Request[] } {
   const nCols = payload.headers.length;
   const nDatos = payload.rows.length;
+  // Columnas congeladas: No, Maquinaria/Vehículo, Nombre.
+  const CONGELADAS = 3;
 
   // Fila 1: títulos de grupo (solo el texto en la primera columna del grupo)
   const filaGrupos: (string | number)[] = new Array(nCols).fill('');
@@ -108,19 +110,29 @@ export function construirPeticionesSheets(
     updateSheetProperties: {
       properties: {
         sheetId: hojaId,
-        gridProperties: { frozenColumnCount: 3 },
+        gridProperties: { frozenColumnCount: CONGELADAS },
       },
       fields: 'gridProperties.frozenColumnCount',
     },
   });
 
-  // Combinar la fila de títulos por grupo
+  // Combinar la fila de títulos por grupo. Google NO permite combinar
+  // columnas congeladas con no congeladas: si un grupo cruza el límite
+  // (columna 3), se parte en dos combinaciones con el mismo formato; el
+  // título queda en la primera celda del grupo (parte congelada, así
+  // sigue visible al moverse a la derecha).
   payload.grupos.forEach((g) => {
-    requests.push({
-      mergeCells: {
-        range: { sheetId: hojaId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: g.desde, endColumnIndex: g.hasta + 1 },
-        mergeType: 'MERGE_ALL',
-      },
+    const cruza = g.desde < CONGELADAS && g.hasta + 1 > CONGELADAS;
+    const partes = cruza
+      ? [[g.desde, CONGELADAS], [CONGELADAS, g.hasta + 1]]
+      : [[g.desde, g.hasta + 1]];
+    partes.forEach(([desde, hasta]) => {
+      requests.push({
+        mergeCells: {
+          range: { sheetId: hojaId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: desde, endColumnIndex: hasta },
+          mergeType: 'MERGE_ALL',
+        },
+      });
     });
   });
 
