@@ -41,6 +41,12 @@ export class MaquinariaController {
     return this.maquinariaService.getTiposMaquinaria();
   }
 
+  // Escribe el reporte de maquinaria en la hoja de Google (Drive)
+  @Post('exportar-drive')
+  async exportarDrive(@Body() payload: any) {
+    return await this.maquinariaService.exportarDrive(payload);
+  }
+
   @Get()
   findContratos() {
     return this.maquinariaService.findMaquinaria();

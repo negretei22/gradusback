@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm/repository/Repository';
 import * as fs from 'fs';
 import { join } from 'path';
+import { GoogleSheetsService } from './google-sheets.service';
 
 
 
@@ -35,6 +36,7 @@ export class MaquinariaService implements OnModuleInit {
         private maquinariaRepo: Repository<Maquinaria>,
         @InjectRepository(TiposMaquinaria)
         private tiposMaquinariaRepo: Repository<TiposMaquinaria>,
+        private googleSheetsService: GoogleSheetsService,
 
     ) { }
 
@@ -54,6 +56,11 @@ export class MaquinariaService implements OnModuleInit {
                 id_tipo_maquinaria: 'ASC'
             }
         });
+    }
+
+    // Escribe el reporte de maquinaria en la hoja de Google (Drive)
+    async exportarDrive(payload: any) {
+        return this.googleSheetsService.escribirReporte(payload);
     }
 
 
