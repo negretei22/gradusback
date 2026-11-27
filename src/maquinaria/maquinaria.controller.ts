@@ -41,10 +41,12 @@ export class MaquinariaController {
     return this.maquinariaService.getTiposMaquinaria();
   }
 
-  // Escribe el reporte de maquinaria en la hoja de Google (Drive)
+  // Escribe uno de los 3 archivos de Drive (leasing, seguros, servicios)
+  // o los 3 con { archivo: 'todos' }. El contenido se arma en el back
+  // con los datos actuales de la base; el front solo dice cuál archivo.
   @Post('exportar-drive')
-  async exportarDrive(@Body() payload: any) {
-    return await this.maquinariaService.exportarDrive(payload);
+  async exportarDrive(@Body() body: any) {
+    return await this.maquinariaService.exportarDriveArchivo(body?.archivo);
   }
 
   @Get()

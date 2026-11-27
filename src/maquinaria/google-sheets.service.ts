@@ -1,16 +1,26 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { google } from 'googleapis';
 import { construirPeticionesSheets, ReporteDrivePayload } from './sheets-reporte';
+import type { ArchivoDrive } from './sheets-archivos';
 
-// Escribe el reporte de maquinaria en la hoja de Google elegida por Ivo con
-// la cuenta de servicio (la llave .json va en el .env, nunca en git).
+// Escribe cada archivo de maquinaria en su hoja de Google con la cuenta de
+// servicio (la llave .json va en el .env, nunca en git). Son 3 archivos
+// diferentes, no 3 pestañas: Leasing, Seguros y Servicios.
 @Injectable()
 export class GoogleSheetsService {
-  // Hoja elegida por Ivo (primera pestaña en blanco); se puede cambiar con
-  // la variable MAQUINARIA_SHEET_ID en el .env sin tocar el código.
-  private readonly sheetId =
-    process.env.MAQUINARIA_SHEET_ID ||
-    '1QEDrUmrbDRq-c9rAxVF1TYfJswTa80Xtzu_lsCipWzc';
+  // Hojas elegidas por Ivo (primera pestaña en blanco en las 3); se pueden
+  // cambiar con variables en el .env sin tocar el código.
+  private readonly hojas: Record<ArchivoDrive, string> = {
+    leasing:
+      process.env.MAQUINARIA_SHEET_ID ||
+      '1QEDrUmrbDRq-c9rAxVF1TYfJswTa80Xtzu_lsCipWzc',
+    seguros:
+      process.env.MAQUINARIA_SEGUROS_SHEET_ID ||
+      '1dK85qMNpcj2KsJqsYPxD5_JKBZzuo8s8ZkjGx9Y63q0',
+    servicios:
+      process.env.MAQUINARIA_SERVICIOS_SHEET_ID ||
+      '1-opqrab1YpvmbIfYvjTGuJ48ZxIz0f79QZDqoILgE34',
+  };
 
   private cliente() {
     const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE;
@@ -32,13 +42,17 @@ export class GoogleSheetsService {
     return `'${titulo.replace(/'/g, "''")}'`;
   }
 
-  async escribirReporte(payload: ReporteDrivePayload) {
+  async escribirReporte(archivo: ArchivoDrive, payload: ReporteDrivePayload) {
     if (!payload || !Array.isArray(payload.headers) || !Array.isArray(payload.rows)) {
       throw new InternalServerErrorException('El reporte llegó vacío o incompleto.');
     }
+    const sheetId = this.hojas[archivo];
+    if (!sheetId) {
+      throw new InternalServerErrorException(`Archivo de Drive desconocido: ${archivo}.`);
+    }
     try {
       const sheets = this.cliente();
-      const meta = await sheets.spreadsheets.get({ spreadsheetId: this.sheetId });
+      const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
       const primera = meta.data.sheets?.[0]?.properties;
       if (!primera?.title || primera.sheetId === undefined || primera.sheetId === null) {
         throw new InternalServerErrorException('La hoja de Drive no tiene pestañas.');
@@ -50,21 +64,22 @@ export class GoogleSheetsService {
       // Limpiar valores viejos y escribir el reporte nuevo (RAW: los textos
       // como "26-jun-26" y "Financiado en letra" se quedan tal cual).
       await sheets.spreadsheets.values.clear({
-        spreadsheetId: this.sheetId,
+        spreadsheetId: sheetId,
         range: this.rango(titulo),
       });
       await sheets.spreadsheets.values.update({
-        spreadsheetId: this.sheetId,
+        spreadsheetId: sheetId,
         range: `${this.rango(titulo)}!A1`,
         valueInputOption: 'RAW',
         requestBody: { values: valores },
       });
       await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: this.sheetId,
+        spreadsheetId: sheetId,
         requestBody: { requests },
       });
       return {
         ok: true,
+        archivo,
         hoja: titulo,
         filas: payload.rows.length,
         columnas: payload.headers.length,
@@ -74,7 +89,7 @@ export class GoogleSheetsService {
       const detalle =
         e?.response?.data?.error?.message || e?.message || 'Error desconocido';
       throw new InternalServerErrorException(
-        `No se pudo escribir en la hoja de Drive: ${detalle}. Revisa que la hoja esté compartida con la cuenta de servicio como Editor.`,
+        `No se pudo escribir en la hoja de Drive (${archivo}): ${detalle}. Revisa que la hoja esté compartida con la cuenta de servicio como Editor.`,
       );
     }
   }

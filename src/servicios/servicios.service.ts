@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Servicio } from './servicio.entity';
+import { MaquinariaService } from 'src/maquinaria/maquinaria.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,6 +16,7 @@ export class ServicioService {
   constructor(
     @InjectRepository(Servicio)
     private servicioRepo: Repository<Servicio>,
+    private maquinariaService: MaquinariaService,
   ) { }
 
   async create(body: any, files: Express.Multer.File[]) {
@@ -35,7 +37,10 @@ export class ServicioService {
       fotos: fotosNuevas,
     });
 
-    return this.servicioRepo.save(servicio);
+    const guardado = await this.servicioRepo.save(servicio);
+    // El archivo de Servicios se actualiza solo al guardar un servicio.
+    await this.maquinariaService.refrescarDriveArchivo('servicios');
+    return guardado;
   }
 
   async update(body: any, files: Express.Multer.File[]) {
@@ -60,7 +65,9 @@ export class ServicioService {
     servicio.total = body.total ?? 0;
     servicio.comentarios = body.comentarios ?? 0;
 
-    return this.servicioRepo.save(servicio);
+    const guardado = await this.servicioRepo.save(servicio);
+    await this.maquinariaService.refrescarDriveArchivo('servicios');
+    return guardado;
   }
 
   async remove(id: number) {
@@ -69,7 +76,9 @@ export class ServicioService {
       const dir = path.join('./uploads/servicios', s.codigo);
       if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true });
     }
-    return this.servicioRepo.remove(s);
+    const eliminado = await this.servicioRepo.remove(s);
+    await this.maquinariaService.refrescarDriveArchivo('servicios');
+    return eliminado;
   }
 
   async findAll() {
