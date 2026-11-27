@@ -11,6 +11,7 @@ import { renameSync, unlinkSync, existsSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { Express } from 'express';
 import { MaquinariaService } from 'src/maquinaria/maquinaria.service';
+import { BancosCajaChicaService } from 'src/bancos-caja-chica/bancos.caja-chica.service';
 
 const LABELS_MAP: { [key: string]: string } = {
     archivo_prefactura: 'Prefactura',
@@ -50,7 +51,21 @@ export class FinanzasService implements OnModuleInit {
         @InjectRepository(DondeAplica)
         private dondeAplicaRepo: Repository<DondeAplica>,
         private maquinariaService: MaquinariaService,
+        private bancosCajaChicaService: BancosCajaChicaService,
     ) { }
+
+    // La factura mueve dinero del banco: transferencia (2), tarjeta de
+    // débito (3), cheque (4) o débito Banorte (6). Son los mismos métodos
+    // que el módulo de Bancos/Caja Chica lee de la base.
+    private esMovimientoBanco(mov: any): boolean {
+        return [2, 3, 4, 6].includes(Number(mov?.metodo_pago_id));
+    }
+
+    private async refrescarSaldosSiAplica(mov: any) {
+        if (this.esMovimientoBanco(mov)) {
+            await this.bancosCajaChicaService.refrescarDrive();
+        }
+    }
 
     // El activo al que va ligada una factura de egreso de Maquinaria
     // (categoría 19). Solo entonces el archivo de Leasing se refresca.
@@ -317,6 +332,7 @@ FROM movimientos_financieros m
         }
 
         await this.refrescarLeasingSiAplica(mov);
+        await this.refrescarSaldosSiAplica(mov);
 
         return resultado;
     }
@@ -459,6 +475,7 @@ FROM movimientos_financieros m
         }
 
         await this.refrescarLeasingSiAplica(payload);
+        await this.refrescarSaldosSiAplica(payload);
 
         return guardado;
     }
@@ -613,6 +630,12 @@ FROM movimientos_financieros m
             this.activoDeMovimiento(payload) !== null
         ) {
             await this.maquinariaService.refrescarDriveArchivo('leasing');
+        }
+
+        // La hoja de Saldos también cambia si la factura era de banco o
+        // quedó siéndolo con la edición (mismo criterio que el Leasing).
+        if (this.esMovimientoBanco(movimiento) || this.esMovimientoBanco(payload)) {
+            await this.bancosCajaChicaService.refrescarDrive();
         }
 
         return { ok: true };

@@ -19,4 +19,10 @@ export class BancosCajaChicaController {
     cerrarMes(@Param('anio') anio: number, @Param('mes') mes: number) {
         return this.service.cerrarMes(anio, mes);
     }
+
+    // Escribe el mes en la hoja de Saldos de Drive (mismo formato del Excel).
+    @Post('exportar-drive')
+    exportarDrive(@Body() body: any) {
+        return this.service.exportarDrive(body?.anio, body?.mes);
+    }
 }

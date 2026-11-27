@@ -22,6 +22,12 @@ export interface ReporteDrivePayload {
   grupos: GrupoReporte[];
   colsMonto: number[];
   anchos: number[]; // anchos wch como en el Excel
+  // Opcionales: título y subtítulo que van arriba de la fila de grupos
+  // (ej. Saldos: 'BANCOS Y CAJA CHICA' / 'NOVIEMBRE 2026') y los índices
+  // dentro de rows que van en negrita (ej. TOTALES, SALDO ANTERIOR, SALDO FINAL).
+  titulo?: string;
+  subtitulo?: string;
+  filasNegrita?: number[];
 }
 
 // 'FF1F4E79' -> { red: 0.12, green: 0.31, blue: 0.47 }
@@ -65,15 +71,27 @@ export function construirPeticionesSheets(
 ): { valores: (string | number)[][]; requests: sheets_v4.Schema$Request[] } {
   const nCols = payload.headers.length;
   const nDatos = payload.rows.length;
-  // Columnas congeladas: No, Maquinaria/Vehículo, Nombre.
+  // Columnas congeladas: las 3 primeras (en Activos: No, Maquinaria/Vehículo,
+  // Nombre; en Saldos: No, FECHA, CONCEPTO).
   const CONGELADAS = 3;
+  // Filas de título opcionales arriba de la fila de grupos.
+  const nTitulo = (payload.titulo ? 1 : 0) + (payload.subtitulo ? 1 : 0);
+  const filaGrupos = nTitulo;
+  const filaHeaders = nTitulo + 1;
+  const filaDatos = nTitulo + 2;
 
   // Fila 1: títulos de grupo (solo el texto en la primera columna del grupo)
-  const filaGrupos: (string | number)[] = new Array(nCols).fill('');
+  const filaGruposValores: (string | number)[] = new Array(nCols).fill('');
   payload.grupos.forEach((g) => {
-    filaGrupos[g.desde] = g.titulo;
+    filaGruposValores[g.desde] = g.titulo;
   });
-  const valores: (string | number)[][] = [filaGrupos, payload.headers, ...payload.rows];
+  const valores: (string | number)[][] = [
+    ...(payload.titulo ? [[payload.titulo, ...new Array(nCols - 1).fill('')]] : []),
+    ...(payload.subtitulo ? [[payload.subtitulo, ...new Array(nCols - 1).fill('')]] : []),
+    filaGruposValores,
+    payload.headers,
+    ...payload.rows,
+  ];
 
   const requests: sheets_v4.Schema$Request[] = [];
 
@@ -116,6 +134,22 @@ export function construirPeticionesSheets(
     },
   });
 
+  // Combinar las filas de título en todo lo ancho. Como cruzan el límite
+  // del congelado (columna 3), se parten en dos con la misma lógica de los
+  // grupos; el texto queda en la parte congelada.
+  for (let t = 0; t < nTitulo; t++) {
+    const partes: [number, number][] =
+      nCols > CONGELADAS ? [[0, CONGELADAS], [CONGELADAS, nCols]] : [[0, nCols]];
+    partes.forEach(([desde, hasta]) => {
+      requests.push({
+        mergeCells: {
+          range: { sheetId: hojaId, startRowIndex: t, endRowIndex: t + 1, startColumnIndex: desde, endColumnIndex: hasta },
+          mergeType: 'MERGE_ALL',
+        },
+      });
+    });
+  }
+
   // Combinar la fila de títulos por grupo. Google NO permite combinar
   // columnas congeladas con no congeladas: si un grupo cruza el límite
   // (columna 3), se parte en dos combinaciones con el mismo formato; el
@@ -129,18 +163,50 @@ export function construirPeticionesSheets(
     partes.forEach(([desde, hasta]) => {
       requests.push({
         mergeCells: {
-          range: { sheetId: hojaId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: desde, endColumnIndex: hasta },
+          range: { sheetId: hojaId, startRowIndex: filaGrupos, endRowIndex: filaGrupos + 1, startColumnIndex: desde, endColumnIndex: hasta },
           mergeType: 'MERGE_ALL',
         },
       });
     });
   });
 
-  // Fila 1: títulos de grupo (color fuerte, texto blanco, centrado)
+  // Filas de título (título 14 en negrita, subtítulo 12 en negrita, centrados)
+  if (payload.titulo) {
+    requests.push({
+      repeatCell: {
+        range: { sheetId: hojaId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: nCols },
+        cell: {
+          userEnteredFormat: {
+            textFormat: { foregroundColor: TEXTO, fontSize: 14, bold: true },
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)',
+      },
+    });
+  }
+  if (payload.subtitulo) {
+    requests.push({
+      repeatCell: {
+        range: { sheetId: hojaId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: nCols },
+        cell: {
+          userEnteredFormat: {
+            textFormat: { foregroundColor: TEXTO, fontSize: 12, bold: true },
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)',
+      },
+    });
+  }
+
+  // Fila de títulos de grupo (color fuerte, texto blanco, centrado)
   payload.grupos.forEach((g) => {
     requests.push({
       repeatCell: {
-        range: { sheetId: hojaId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: g.desde, endColumnIndex: g.hasta + 1 },
+        range: { sheetId: hojaId, startRowIndex: filaGrupos, endRowIndex: filaGrupos + 1, startColumnIndex: g.desde, endColumnIndex: g.hasta + 1 },
         cell: {
           userEnteredFormat: {
             backgroundColor: hexArgbAColor(g.color),
@@ -155,11 +221,11 @@ export function construirPeticionesSheets(
     });
   });
 
-  // Fila 2: nombres de columna (tinte claro del grupo, negrita, centrado)
+  // Fila de nombres de columna (tinte claro del grupo, negrita, centrado)
   payload.grupos.forEach((g) => {
     requests.push({
       repeatCell: {
-        range: { sheetId: hojaId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: g.desde, endColumnIndex: g.hasta + 1 },
+        range: { sheetId: hojaId, startRowIndex: filaHeaders, endRowIndex: filaHeaders + 1, startColumnIndex: g.desde, endColumnIndex: g.hasta + 1 },
         cell: {
           userEnteredFormat: {
             backgroundColor: hexArgbAColor(g.claro),
@@ -179,7 +245,7 @@ export function construirPeticionesSheets(
     // Datos: bordes finos y texto 11 en todo el bloque
     requests.push({
       repeatCell: {
-        range: { sheetId: hojaId, startRowIndex: 2, endRowIndex: 2 + nDatos, startColumnIndex: 0, endColumnIndex: nCols },
+        range: { sheetId: hojaId, startRowIndex: filaDatos, endRowIndex: filaDatos + nDatos, startColumnIndex: 0, endColumnIndex: nCols },
         cell: {
           userEnteredFormat: {
             textFormat: { foregroundColor: TEXTO, fontSize: 11 },
@@ -196,7 +262,7 @@ export function construirPeticionesSheets(
       if (r % 2 === 1) {
         requests.push({
           repeatCell: {
-            range: { sheetId: hojaId, startRowIndex: 2 + r, endRowIndex: 3 + r, startColumnIndex: 0, endColumnIndex: nCols },
+            range: { sheetId: hojaId, startRowIndex: filaDatos + r, endRowIndex: filaDatos + r + 1, startColumnIndex: 0, endColumnIndex: nCols },
             cell: { userEnteredFormat: { backgroundColor: GRIS_RENGLON } },
             fields: 'userEnteredFormat.backgroundColor',
           },
@@ -204,12 +270,26 @@ export function construirPeticionesSheets(
       }
     }
 
+    // Renglones en negrita (ej. TOTALES, SALDO ANTERIOR y SALDO FINAL).
+    // Se pone el textFormat completo para no perder el tamaño 11 que puso
+    // el bloque de datos.
+    (payload.filasNegrita || []).forEach((r) => {
+      if (r < 0 || r >= nDatos) return;
+      requests.push({
+        repeatCell: {
+          range: { sheetId: hojaId, startRowIndex: filaDatos + r, endRowIndex: filaDatos + r + 1, startColumnIndex: 0, endColumnIndex: nCols },
+          cell: { userEnteredFormat: { textFormat: { foregroundColor: TEXTO, fontSize: 11, bold: true } } },
+          fields: 'userEnteredFormat.textFormat',
+        },
+      });
+    });
+
     // Formato $ en las columnas de montos (las celdas de texto como
     // "Financiado en letra" no se tocan: el formato solo afecta números)
     payload.colsMonto.forEach((col) => {
       requests.push({
         repeatCell: {
-          range: { sheetId: hojaId, startRowIndex: 2, endRowIndex: 2 + nDatos, startColumnIndex: col, endColumnIndex: col + 1 },
+          range: { sheetId: hojaId, startRowIndex: filaDatos, endRowIndex: filaDatos + nDatos, startColumnIndex: col, endColumnIndex: col + 1 },
           cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } },
           fields: 'userEnteredFormat.numberFormat',
         },
@@ -228,20 +308,18 @@ export function construirPeticionesSheets(
     });
   });
 
-  // Altos de las dos filas de encabezado (22 y 30 puntos del Excel)
-  requests.push({
-    updateDimensionProperties: {
-      range: { sheetId: hojaId, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
-      properties: { pixelSize: 29 },
-      fields: 'pixelSize',
-    },
-  });
-  requests.push({
-    updateDimensionProperties: {
-      range: { sheetId: hojaId, dimension: 'ROWS', startIndex: 1, endIndex: 2 },
-      properties: { pixelSize: 40 },
-      fields: 'pixelSize',
-    },
+  // Altos de las filas de encabezado: títulos 29, grupos 29, columnas 40.
+  const altos: [number, number][] = [];
+  for (let t = 0; t < nTitulo; t++) altos.push([t, 29]);
+  altos.push([filaGrupos, 29], [filaHeaders, 40]);
+  altos.forEach(([fila, px]) => {
+    requests.push({
+      updateDimensionProperties: {
+        range: { sheetId: hojaId, dimension: 'ROWS', startIndex: fila, endIndex: fila + 1 },
+        properties: { pixelSize: px },
+        fields: 'pixelSize',
+      },
+    });
   });
 
   return { valores, requests };

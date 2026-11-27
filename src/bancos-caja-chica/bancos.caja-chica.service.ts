@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { CajaChicaService } from '../caja-chica/caja_chica.service';
+import { GoogleSheetsService } from '../maquinaria/google-sheets.service';
+import { construirPayloadSaldos } from './sheets-saldos';
 
 // ⚠️ Confirma estos ids con tu catálogo de métodos de pago
 const FORMA_PAGO: Record<number, string> = {
@@ -17,10 +19,54 @@ export class BancosCajaChicaService {
     // Si el saldo del banco no sale solo de la base, pon aquí el saldo inicial
     private readonly BANCO_SALDO_INICIAL = 0;
 
+    // Hoja de Saldos en Drive (primera pestaña en blanco); se puede cambiar
+    // con BANCOS_SALDOS_SHEET_ID en el .env sin tocar el código. Tiene que
+    // estar compartida con la cuenta de servicio como Editor.
+    private readonly saldosSheetId =
+        process.env.BANCOS_SALDOS_SHEET_ID ||
+        '1lppqepI8SOwD2XoHX1iG9Ek_p4sOGDVFCZ9yr-5wgFc';
+
+    private static readonly MESES = [
+        'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+        'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
+    ];
+
     constructor(
         @InjectDataSource() private dataSource: DataSource,
         private cajaChica: CajaChicaService,
+        private googleSheets: GoogleSheetsService,
     ) { }
+
+    // Escribe el mes en la hoja de Saldos de Drive, con el mismo formato del
+    // Excel. El mes se arma con getMes: los movimientos del banco salen de
+    // las facturas de la base y los de caja se leen del archivo de Caja
+    // Chica (el mismo que ya lee el módulo).
+    async exportarDrive(anio: number, mes: number) {
+        const datos = await this.getMes(anio, mes);
+        if ((datos as any).error_hoja) {
+            throw new Error(
+                'No se pudo leer la hoja de Caja Chica, así que el mes sale incompleto (solo banco). Revisa el archivo y vuelve a intentar.',
+            );
+        }
+        const payload = construirPayloadSaldos(
+            datos,
+            BancosCajaChicaService.MESES[Number(mes) - 1] ?? '',
+            Number(anio),
+        );
+        return this.googleSheets.escribirReporteEn(this.saldosSheetId, payload, 'Saldos');
+    }
+
+    // Refresco silencioso del mes actual para los auto-sync: si Drive
+    // falla, el guardado en Gradus sí se hace y solo queda el error en el
+    // log del back. La hoja siempre lleva el mes actual (el último mes).
+    async refrescarDrive() {
+        try {
+            const hoy = new Date();
+            await this.exportarDrive(hoy.getFullYear(), hoy.getMonth() + 1);
+        } catch (e: any) {
+            console.error('No se pudo refrescar la hoja de Saldos en Drive:', e?.message || e);
+        }
+    }
 
 
     private palabras(txt: string): Set<string> {
@@ -94,10 +140,14 @@ export class BancosCajaChicaService {
             Number(b.banco_gasto) || 0, Number(b.banco_ingreso) || 0,
             Number(b.caja_gasto) || 0, Number(b.caja_ingreso) || 0],
         );
+        // El saldo anterior cambió: la hoja de Saldos se reescribe con el
+        // mes actual. cerrarMes usa este método, así que también refresca.
+        await this.refrescarDrive();
         return { ok: true };
     }
 
     // Guarda el saldo final de este mes como saldo anterior del mes siguiente
+    // (usa guardarSaldo, así que también refresca la hoja de Saldos).
     async cerrarMes(anio: number, mes: number) {
         const actual = await this.getMes(anio, mes);
         if (actual.error_hoja) {
